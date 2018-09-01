@@ -10,7 +10,7 @@ from configparser import ConfigParser
 ##===============================================
 
 class Connect:
-    def __init__(self, filename='modules/config.ini'):
+    def __init__(self, filename='config.ini'):
         """ Connect to MySQL database """
         db_config = self.read_db_config(filename)
         try:
@@ -157,7 +157,7 @@ class Connect:
         self.conn.commit()
         print('Changes Saved')
 
-    def read_db_config(self, filename='modules/config.ini', section='mysql'):
+    def read_db_config(self, filename='config.ini', section='mysql'):
         """ Read database configuration file and return a dictionary object
         :param filename: name of the configuration file
         :param section: section of database configuration
