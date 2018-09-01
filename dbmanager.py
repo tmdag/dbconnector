@@ -10,9 +10,9 @@ from configparser import ConfigParser
 ##===============================================
 
 class Connect:
-    def __init__(self, filename='config.ini'):
+    def __init__(self, cfg='config.ini'):
         """ Connect to MySQL database """
-        db_config = self.read_db_config(filename)
+        db_config = self.read_db_config(cfg)
         try:
             # conn = mysql.connector.connect(**db_config)
             print('Connecting to MySQL database...')
@@ -157,7 +157,7 @@ class Connect:
         self.conn.commit()
         print('Changes Saved')
 
-    def read_db_config(self, filename='config.ini', section='mysql'):
+    def read_db_config(self, cfgfilename, section='mysql'):
         """ Read database configuration file and return a dictionary object
         :param filename: name of the configuration file
         :param section: section of database configuration
@@ -165,8 +165,10 @@ class Connect:
         """
         # create parser and read ini configuration file
         parser = ConfigParser()
-        parser.read(filename)
+        parser.read(cfgfilename)
      
+        if not os.path.isfile(cfgfilename):
+            raise Exception('file {0} not found'.format(cfgfilename))
         # get section, default to mysql
         db = {}
         if parser.has_section(section):
@@ -174,7 +176,7 @@ class Connect:
             for item in items:
                 db[item[0]] = item[1]
         else:
-            raise Exception('{0} not found in the {1} file'.format(section, filename))
+            raise Exception('{0} not found in the {1} file'.format(section, cfgfilename))
      
         return db
 
