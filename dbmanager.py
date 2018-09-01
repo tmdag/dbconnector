@@ -1,13 +1,12 @@
-###
-#
-# This script is using official MySQL python connector (https://dev.mysql.com/doc/connector-python/en/)
-#
-###
-
+"""
+This python script is using official MySQL python connector from MySQL connector website.
+While official python module is using 'low level' MySQL querries,
+this dbmanager wraps them around to more pythonic functions.
+"""
 import os.path
 from mysql.connector import MySQLConnection, Error, errorcode
 from configparser import ConfigParser
-##===============================================
+##=====================================
 
 class Connect:
     def __init__(self, cfg='config.ini'):
@@ -26,7 +25,7 @@ class Connect:
                 print("Database does not exist")
             else:
                 print("Error: {}".format(err))
-     
+
     def show_tables(self):
         ''' show tables in current database '''
         cursor = self.conn.cursor(buffered=True)
@@ -69,7 +68,7 @@ class Connect:
         ''' get row data by by specific columns '''
         cursor = self.conn.cursor(buffered=True)
         columns = cols.get("columns")
-        query = "SELECT {1:s} FROM {0:s}".format(tablename, ','.join(map(str, columns)) )
+        query = "SELECT {1:s} FROM {0:s}".format(tablename, ','.join(map(str, columns)))
         print("EXECUTING: " + query)
         cursor.execute(query)
         all_rows = cursor.fetchall()
@@ -84,7 +83,7 @@ class Connect:
         cursor.execute(query)
         number_of_rows_found = cursor.rowcount
         cursor.close()
-        return number_of_rows_found  
+        return number_of_rows_found
 
     def get_value_id(self, tablename, column, value):
         ''' check whenever value exists in specified table under specified column '''
@@ -93,9 +92,9 @@ class Connect:
         print("EXECUTING: " + query)
         cursor.execute(query)
         get_query = cursor.fetchone()
-        value_id = get_query[0] if get_query!=None else None
+        value_id = get_query[0] if get_query != None else None
         cursor.close()
-        return value_id  
+        return value_id
 
     def insert_single_row(self, tablename, **colvals):
         ''' insert single row/values into table.
@@ -103,7 +102,7 @@ class Connect:
         cursor = self.conn.cursor(buffered=True)
         columns = colvals.get("columns")
         values = colvals.get("values")
-        query = "INSERT INTO {0:s} ({1:s}) VALUES ({2:s})".format(tablename, ','.join(map(str, columns)), ','.join(map(repr, values)) )
+        query = "INSERT INTO {0:s} ({1:s}) VALUES ({2:s})".format(tablename, ','.join(map(str, columns)), ','.join(map(repr, values)))
         print("EXECUTING: " + query)
         cursor.execute(query)
         cursor.close()
@@ -120,7 +119,7 @@ class Connect:
         for idx, value in enumerate(columns):
             single_column = value
             single_value = values[idx]
-            query = "UPDATE {0:s} SET {1:s} = {2!r} WHERE {3:s} = {4:s}".format(tablename, single_column, single_value , primary_key_column, str(key))
+            query = "UPDATE {0:s} SET {1:s} = {2!r} WHERE {3:s} = {4:s}".format(tablename, single_column, single_value, primary_key_column, str(key))
             print("EXECUTING: " + query)
             cursor.execute(query)
         cursor.close()
@@ -140,7 +139,7 @@ class Connect:
 
         primary_key_column = self.get_primary_key(tablename)
 
-        query = "UPDATE {0:s} SET {1:s} = {2!r} WHERE {3:s} = {4:s}".format(tablename, column, value , primary_key_column, str(key))
+        query = "UPDATE {0:s} SET {1:s} = {2!r} WHERE {3:s} = {4:s}".format(tablename, column, value, primary_key_column, str(key))
         print("EXECUTING: " + query)
         cursor.execute(query)
         cursor.close()
@@ -154,6 +153,7 @@ class Connect:
         cursor.close()
 
     def save(self):
+        ''' commit to database '''
         self.conn.commit()
         print('Changes Saved')
 
@@ -166,19 +166,18 @@ class Connect:
         # create parser and read ini configuration file
         parser = ConfigParser()
         parser.read(cfgfilename)
-     
+
         if not os.path.isfile(cfgfilename):
             raise Exception('file {0} not found'.format(cfgfilename))
         # get section, default to mysql
-        db = {}
+        db_config_dict = {}
         if parser.has_section(section):
             items = parser.items(section)
             for item in items:
-                db[item[0]] = item[1]
+                db_config_dict[item[0]] = item[1]
         else:
             raise Exception('{0} not found in the {1} file'.format(section, cfgfilename))
-     
-        return db
+        return db_config_dict
 
     def close_connection(self):
         ''' close connection to database '''
@@ -188,32 +187,8 @@ class Connect:
 
 if __name__ == '__main__':
     dbconnect = Connect('config.ini')
-    # dbconnect.show_tables()
-    # does_exist = dbconnect.exists("hdrTags", "tagName", "test")
-    # if does_exist == 0:
-    #     print("its empty")
-    # else:
-    #     print("actually, i've found {} entries with that value".format(does_exist))
-    # dbconnect.insert_single_value("hdrTags", "tagName", "test")
-    # dbconnect.get_all_rows("hdrTags")
-
-    # columns = ["cameraName", "fullframe", "sensorSize"]
-    # values = ["Canon 5D Mark II", 1, "36x24"]
-
-    # dbconnect.insert_single_row("cameras", columns, values)
-
-    # data = dbconnect.get_column_names("lenses")
+    data = dbconnect.get_column_names("lenses")
     # data = dbconnect.get_primary_key("cameras")
     # data = dbconnect.get_value_id("cameras", "cameraName", "GoPro")
-    columns = ["idhdrTags", "tagName"]
-    data = dbconnect.get_rows_from_columns("hdrTags", columns=columns)
-    data = [x[1] for x in data]
     print(data)
-
     dbconnect.close_connection()
-
-    # print(read_db_config())
-
-
- 
- 

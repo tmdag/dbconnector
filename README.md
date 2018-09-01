@@ -1,15 +1,11 @@
-# Python 3 MySQL DB manager
-
+# Python 3 MySQL 8 DB manager
 This python script is using official MySQL python connector from [MySQL connector website](https://dev.mysql.com/doc/connector-python/en/).
 While official python module is using 'low level' MySQL querries, this dbmanager wraps them around to more pythonic functions.
 
 ## Installation:
 Download [MySQL repo](https://dev.mysql.com/downloads/repo/yum/)
-```
-$ sudo dnf install mysql-connector 
-```
 OR 
-Download it here directly: [connector download](https://dev.mysql.com/downloads/connector/python/).
+Download official python connector here: [MySQL connector download](https://dev.mysql.com/downloads/connector/python/).
 Clone this repo and start using dbmanager.
 
 
