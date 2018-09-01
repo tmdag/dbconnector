@@ -2,9 +2,9 @@
 
 This script is using official MySQL python connector from [MySQL connector website](https://dev.mysql.com/doc/connector-python/en/)
 Download [MySQL repo](https://dev.mysql.com/downloads/repo/yum/)
-'''
+```
 $ sudo dnf install mysql-connector 
-'''
+```
 OR 
 Download it here directly: [connector download](https://dev.mysql.com/downloads/connector/python/)
 
@@ -12,13 +12,13 @@ Download it here directly: [connector download](https://dev.mysql.com/downloads/
 ## Config :
 dbconnector expects configuration file with your database details. Example of such config:
 cat config/config.ini
-'''
+```
 [mysql]
 user = myusername
 password = MySectetPassword
 host = myServer
 database = myDatabase
-'''
+```
 You can pass config location to the class as an argument.
 
 ## Connection : 
@@ -30,6 +30,7 @@ Each connection with database is made by creating class instance and requires da
 - [ ] 
 
 ## Example:
+```
 db_config = 'config/config.ini'
 
 dbconnect = Connect(dbconfig)
@@ -44,3 +45,4 @@ primary_key_of_table = dbconnect.get_primary_key("myTable")
 print(primary_key_of_table)
 
 dbconnect.close_connection()
+```
