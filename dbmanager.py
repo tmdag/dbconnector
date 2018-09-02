@@ -47,10 +47,10 @@ class Connect:
     def get_column_names(self, tablename):
         ''' list column names of a table '''
         cursor = self.conn.cursor(buffered=True)
-        query = "SELECT column_name FROM information_schema.columns WHERE table_name={0!r}".format(tablename)
+        query = "SELECT column_name FROM information_schema.columns WHERE table_name={0!r} ORDER BY ORDINAL_POSITION".format(tablename)
         print("EXECUTING: " + query)
         cursor.execute(query)
-        column_names = list(zip(*cursor.fetchall()))[0]
+        column_names = cursor.fetchall() #list(zip(*cursor.fetchall()))[0]
         cursor.close()
         return column_names
 
@@ -186,8 +186,8 @@ class Connect:
 
 
 if __name__ == '__main__':
-    dbconnect = Connect('config.ini')
-    data = dbconnect.get_column_names("lenses")
+    dbconnect = Connect('dbconfig.ini')
+    data = dbconnect.get_column_names("assetType")
     # data = dbconnect.get_primary_key("cameras")
     # data = dbconnect.get_value_id("cameras", "cameraName", "GoPro")
     print(data)
