@@ -50,7 +50,7 @@ class Connect:
         query = "SELECT column_name FROM information_schema.columns WHERE table_name={0!r} ORDER BY ORDINAL_POSITION".format(tablename)
         print("EXECUTING: " + query)
         cursor.execute(query)
-        column_names = cursor.fetchall() #list(zip(*cursor.fetchall()))[0]
+        column_names = list(zip(*cursor.fetchall()))[0]
         cursor.close()
         return column_names
 
