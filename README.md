@@ -26,14 +26,12 @@ Each connection with database is made by creating class instance and requires da
 
 ## Todo:
 - [x] Write Todo
-- [ ] 
-- [ ] 
 
 ## Example:
 ```
+from dbconnector import dbmanager
 db_config = 'config/config.ini'
-
-dbconnect = Connect(dbconfig)
+dbconnect = dbmanager.Connect(cfg=db_config)
 
 db_tables = dbconnect.show_tables()
 print(db_tables)
