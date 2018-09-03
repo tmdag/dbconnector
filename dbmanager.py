@@ -20,6 +20,7 @@ class Connect:
             logging.disable(logging.DEBUG)
 
         db_config = self.read_db_config(cfg)
+        self.db_name = db_config.get("database")
         self.debug = debug
         try:
             # conn = mysql.connector.connect(**db_config)
@@ -58,7 +59,7 @@ class Connect:
     def get_column_names(self, tablename):
         ''' list column names of a table '''
         cursor = self.conn.cursor(buffered=True)
-        query = "SELECT column_name FROM information_schema.columns WHERE table_name={0!r} ORDER BY ORDINAL_POSITION".format(tablename)
+        query = "SELECT column_name FROM information_schema.columns  WHERE table_schema={0!r} AND table_name={1!r} ORDER BY ORDINAL_POSITION".format(self.db_name, tablename)
         logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         column_names = list(zip(*cursor.fetchall()))[0]
@@ -200,7 +201,7 @@ class Connect:
 
 if __name__ == '__main__':
     dbconnect = Connect('dbconfig.ini', debug="False")
-    data = dbconnect.get_column_names("hdrs")
+    data = dbconnect.get_column_names("users")
     # data = dbconnect.get_primary_key("cameras")
     # data = dbconnect.get_value_id("cameras", "cameraName", "GoPro")
     print(data)
