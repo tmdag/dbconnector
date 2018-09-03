@@ -12,11 +12,11 @@ from mysql.connector import MySQLConnection, Error, errorcode
 
 class Connect:
     """ main connect class """
-    def __init__(self, cfg='config.ini', debug="True"):
+    def __init__(self, cfg='config.ini', debug=True):
         """ Connect to MySQL database """
         logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
-        if debug == "False":
+        if not debug:
             logging.disable(logging.DEBUG)
 
         db_config = self.read_db_config(cfg)
