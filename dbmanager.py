@@ -15,6 +15,9 @@ class Connect:
         """ Connect to MySQL database """
         logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
+        if debug=="False":
+            logging.disable(logging.DEBUG)
+
         db_config = self.read_db_config(cfg)
         self.debug = debug
         try:
@@ -190,10 +193,11 @@ class Connect:
         ''' close connection to database '''
         self.conn.close()
         logging.debug('Connection closed.')
+        logging.shutdown()
 
 
 if __name__ == '__main__':
-    dbconnect = Connect('dbconfig.ini')
+    dbconnect = Connect('dbconfig.ini', debug="False")
     data = dbconnect.get_column_names("hdrs")
     # data = dbconnect.get_primary_key("cameras")
     # data = dbconnect.get_value_id("cameras", "cameraName", "GoPro")
