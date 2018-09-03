@@ -4,32 +4,39 @@ While official python module is using 'low level' MySQL querries,
 this dbmanager wraps them around to more pythonic functions.
 """
 import os.path
+import sys
+import logging
 from mysql.connector import MySQLConnection, Error, errorcode
 from configparser import ConfigParser
 ##=====================================
 
 class Connect:
-    def __init__(self, cfg='config.ini'):
+    def __init__(self, cfg='config.ini', debug="True"):
         """ Connect to MySQL database """
+        logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+
         db_config = self.read_db_config(cfg)
+        self.debug = debug
         try:
             # conn = mysql.connector.connect(**db_config)
-            print('Connecting to MySQL database...')
+            logging.debug('Connecting to MySQL database...')
             self.conn = MySQLConnection(**db_config)
             if self.conn.is_connected():
-                print('Connected to MySQL database')
+                logging.debug('Connected to MySQL database')
         except mysql.connector.Error as err:
             if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-                print("Something is wrong with your user name or password")
+                logging.debug("Something is wrong with your user name or password")
             elif err.errno == errorcode.ER_BAD_DB_ERROR:
-                print("Database does not exist")
+                logging.debug("Database does not exist")
             else:
-                print("Error: {}".format(err))
+                logging.debug("Error: {}".format(err))
 
     def show_tables(self):
         ''' show tables in current database '''
         cursor = self.conn.cursor(buffered=True)
-        cursor.execute("SHOW TABLES")
+        query = "SHOW TABLES"
+        logging.debug("EXECUTING: " + query)
+        cursor.execute(query)
         tables = cursor.fetchall()
         cursor.close()
         return tables
@@ -38,7 +45,7 @@ class Connect:
         ''' gets name of primary key in a table '''
         cursor = self.conn.cursor(buffered=True)
         query = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI')".format(tablename)
-        print("EXECUTING: " + query)
+        logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         primary_key_name = cursor.fetchone()[0]
         cursor.close()
@@ -48,7 +55,7 @@ class Connect:
         ''' list column names of a table '''
         cursor = self.conn.cursor(buffered=True)
         query = "SELECT column_name FROM information_schema.columns WHERE table_name={0!r} ORDER BY ORDINAL_POSITION".format(tablename)
-        print("EXECUTING: " + query)
+        logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         column_names = list(zip(*cursor.fetchall()))[0]
         cursor.close()
@@ -58,7 +65,7 @@ class Connect:
         ''' get all rows from selected table '''
         cursor = self.conn.cursor(buffered=True)
         query = "SELECT * FROM {0:s}".format(tablename)
-        print("EXECUTING: " + query)
+        logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         all_rows = cursor.fetchall()
         cursor.close()
@@ -69,7 +76,7 @@ class Connect:
         cursor = self.conn.cursor(buffered=True)
         columns = cols.get("columns")
         query = "SELECT {1:s} FROM {0:s}".format(tablename, ','.join(map(str, columns)))
-        print("EXECUTING: " + query)
+        logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         all_rows = cursor.fetchall()
         cursor.close()
@@ -79,7 +86,7 @@ class Connect:
         ''' check whenever value exists in specified table under specified column '''
         cursor = self.conn.cursor(buffered=True)
         query = "SELECT {1:s}, COUNT(*) FROM {0:s} WHERE {1:s} = {2!r} GROUP BY {1:s}".format(tablename, column, value)
-        print("EXECUTING: " + query)
+        logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         number_of_rows_found = cursor.rowcount
         cursor.close()
@@ -89,7 +96,7 @@ class Connect:
         ''' check whenever value exists in specified table under specified column '''
         cursor = self.conn.cursor(buffered=True)
         query = "SELECT @id:={3:s} AS id FROM {0:s} WHERE {1:s} = {2!r}".format(tablename, column, value, self.get_primary_key(tablename))
-        print("EXECUTING: " + query)
+        logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         get_query = cursor.fetchone()
         value_id = get_query[0] if get_query != None else None
@@ -103,7 +110,7 @@ class Connect:
         columns = colvals.get("columns")
         values = colvals.get("values")
         query = "INSERT INTO {0:s} ({1:s}) VALUES ({2:s})".format(tablename, ','.join(map(str, columns)), ','.join(map(repr, values)))
-        print("EXECUTING: " + query)
+        logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         cursor.close()
 
@@ -120,7 +127,7 @@ class Connect:
             single_column = value
             single_value = values[idx]
             query = "UPDATE {0:s} SET {1:s} = {2!r} WHERE {3:s} = {4:s}".format(tablename, single_column, single_value, primary_key_column, str(key))
-            print("EXECUTING: " + query)
+            logging.debug("EXECUTING: " + query)
             cursor.execute(query)
         cursor.close()
 
@@ -128,7 +135,7 @@ class Connect:
         ''' insert single values into table '''
         cursor = self.conn.cursor(buffered=True)
         query = "INSERT INTO {0:s} ({1:s}) VALUES({2!r})".format(tablename, column, values)
-        print("EXECUTING: " + query)
+        logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         cursor.close()
 
@@ -140,7 +147,7 @@ class Connect:
         primary_key_column = self.get_primary_key(tablename)
 
         query = "UPDATE {0:s} SET {1:s} = {2!r} WHERE {3:s} = {4:s}".format(tablename, column, value, primary_key_column, str(key))
-        print("EXECUTING: " + query)
+        logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         cursor.close()
 
@@ -148,14 +155,14 @@ class Connect:
         ''' remove row by matching value '''
         cursor = self.conn.cursor(buffered=True)
         query = "DELETE FROM {0:s} WHERE {1:s} = {2!r}".format(tablename, column, values)
-        print("EXECUTING: " + query)
+        logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         cursor.close()
 
     def save(self):
         ''' commit to database '''
         self.conn.commit()
-        print('Changes Saved')
+        logging.debug('Changes Saved')
 
     def read_db_config(self, cfgfilename, section='mysql'):
         """ Read database configuration file and return a dictionary object
@@ -182,13 +189,13 @@ class Connect:
     def close_connection(self):
         ''' close connection to database '''
         self.conn.close()
-        print('Connection closed.')
+        logging.debug('Connection closed.')
 
 
 if __name__ == '__main__':
     dbconnect = Connect('dbconfig.ini')
-    data = dbconnect.get_column_names("assetType")
+    data = dbconnect.get_column_names("hdrs")
     # data = dbconnect.get_primary_key("cameras")
     # data = dbconnect.get_value_id("cameras", "cameraName", "GoPro")
-    print(data)
+    logging.debug(data)
     dbconnect.close_connection()

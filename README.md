@@ -25,7 +25,8 @@ You can pass config location to the class as an argument.
 Each connection with database is made by creating class instance and requires database closure with 'close_connection()' method.
 
 ## Todo:
-- [x] Write Todo
+- [] Write Todo
+- []  
 
 ## Example:
 ```
@@ -42,5 +43,6 @@ print(my_column_names)
 primary_key_of_table = dbconnect.get_primary_key("myTable")
 print(primary_key_of_table)
 
+dbconnect.save() # save (commit) if there were any changes made in the database.
 dbconnect.close_connection()
 ```
