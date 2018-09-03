@@ -3,19 +3,20 @@ This python script is using official MySQL python connector from MySQL connector
 While official python module is using 'low level' MySQL querries,
 this dbmanager wraps them around to more pythonic functions.
 """
-import os.path
 import sys
+import os.path
 import logging
-from mysql.connector import MySQLConnection, Error, errorcode
 from configparser import ConfigParser
+from mysql.connector import MySQLConnection, Error, errorcode
 ##=====================================
 
 class Connect:
+    """ main connect class """
     def __init__(self, cfg='config.ini', debug="True"):
         """ Connect to MySQL database """
         logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
-        if debug=="False":
+        if debug == "False":
             logging.disable(logging.DEBUG)
 
         db_config = self.read_db_config(cfg)
@@ -26,13 +27,13 @@ class Connect:
             self.conn = MySQLConnection(**db_config)
             if self.conn.is_connected():
                 logging.debug('Connected to MySQL database')
-        except mysql.connector.Error as err:
+        except Error as err:
             if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
                 logging.debug("Something is wrong with your user name or password")
             elif err.errno == errorcode.ER_BAD_DB_ERROR:
                 logging.debug("Database does not exist")
             else:
-                logging.debug("Error: {}".format(err))
+                logging.debug("Error: %s", err)
 
     def show_tables(self):
         ''' show tables in current database '''
@@ -167,7 +168,8 @@ class Connect:
         self.conn.commit()
         logging.debug('Changes Saved')
 
-    def read_db_config(self, cfgfilename, section='mysql'):
+    @staticmethod
+    def read_db_config(cfgfilename, section='mysql'):
         """ Read database configuration file and return a dictionary object
         :param filename: name of the configuration file
         :param section: section of database configuration
@@ -201,5 +203,5 @@ if __name__ == '__main__':
     data = dbconnect.get_column_names("hdrs")
     # data = dbconnect.get_primary_key("cameras")
     # data = dbconnect.get_value_id("cameras", "cameraName", "GoPro")
-    logging.debug(data)
+    print(data)
     dbconnect.close_connection()

@@ -1,3 +1,8 @@
+![VFX Pipeline]https://img.shields.io/badge/VFX%20Pipeline-2018-lightgrey.svg?style=flat)
+![MySQL v8.0]https://img.shields.io/badge/MySQL-8.0-yellow.svg?style=flat)
+![Python v3.6]https://img.shields.io/badge/Python-3.6-blue.svg?style=flat)
+![pylint Score](https://mperlet.github.io/pybadge/badges/9.58.svg)
+
 # Python 3 MySQL 8 DB manager
 This python script is using official MySQL python connector from [MySQL connector website](https://dev.mysql.com/doc/connector-python/en/).
 While official python module is using 'low level' MySQL querries, this dbmanager wraps them around to more pythonic functions.
