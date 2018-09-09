@@ -116,6 +116,7 @@ class Connect:
 
         cursor.close()
         return single_row
+
     def value_exists(self, tablename, column, value):
         ''' check whenever value exists in specified table under specified column '''
         cursor = self.conn.cursor(buffered=True)
