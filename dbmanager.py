@@ -87,6 +87,35 @@ class Connect:
         cursor.close()
         return all_rows
 
+    def get_row_by_id(self, tablename, idx):
+        ''' get row data by by specific columns '''
+        cursor = self.conn.cursor(buffered=True)
+        query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
+        logging.debug("EXECUTING: " + query1)
+        cursor.execute(query1)
+        columnID = cursor.fetchone()[0]
+        query2 = "SELECT * FROM {0:s} WHERE {1:s} = {2!r};".format(tablename, columnID, str(idx))
+        logging.debug("EXECUTING: " + query2)
+        cursor.execute(query2)
+        single_row = cursor.fetchone()
+
+        cursor.close()
+        return single_row
+
+    def get_value_by_id(self, tablename, column, idx):
+        ''' get row data by by specific columns '''
+        cursor = self.conn.cursor(buffered=True)
+        query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
+        logging.debug("EXECUTING: " + query1)
+        cursor.execute(query1)
+        columnID = cursor.fetchone()[0]
+        query2 = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, column, columnID, str(idx))
+        logging.debug("EXECUTING: " + query2)
+        cursor.execute(query2)
+        single_row = cursor.fetchone()[0]
+
+        cursor.close()
+        return single_row
     def value_exists(self, tablename, column, value):
         ''' check whenever value exists in specified table under specified column '''
         cursor = self.conn.cursor(buffered=True)
@@ -201,8 +230,15 @@ class Connect:
 
 if __name__ == '__main__':
     dbconnect = Connect('dbconfig.ini', debug="False")
-    data = dbconnect.get_column_names("users")
+    # data = dbconnect.get_column_names("hdrs")
     # data = dbconnect.get_primary_key("cameras")
     # data = dbconnect.get_value_id("cameras", "cameraName", "GoPro")
+
+    # get_camera_name="Canon EOS 5D Mark II"
+    # data = dbconnect.get_value_id("cameras", "cameraName", get_camera_name.strip())
+
+    # "cameras_cameraID"
+    # data = dbconnect.get_row_by_id("cameras", 2)
+    data = dbconnect.get_value_by_id("cameras", "cameraName", 2)
     print(data)
     dbconnect.close_connection()
