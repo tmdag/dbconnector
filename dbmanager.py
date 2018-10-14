@@ -12,7 +12,7 @@ from mysql.connector import MySQLConnection, Error, errorcode
 
 class Connect:
     """ main connect class """
-    def __init__(self, cfg='config.ini', debug=True):
+    def __init__(self, cfg='config.ini', debug=True, key=None, value=None):
         """ Connect to MySQL database """
         logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
@@ -35,6 +35,10 @@ class Connect:
                 logging.debug("Database does not exist")
             else:
                 logging.debug("Error: %s", err)
+            raise Exception(err)
+
+        self.key = None
+        self.value = None
 
     def show_tables(self):
         ''' show tables in current database '''
@@ -44,7 +48,11 @@ class Connect:
         cursor.execute(query)
         tables = cursor.fetchall()
         cursor.close()
-        return tables
+        tables_out = tuple(zip(*tables))[0]
+        self.key = self.db_name
+        self.value = tuple(zip(*tables))[0]
+        # return tables_out
+        return self
 
     def get_primary_key(self, tablename):
         ''' gets name of primary key in a table '''
@@ -199,6 +207,15 @@ class Connect:
         self.conn.commit()
         logging.debug('Changes Saved')
 
+    def as_dict(self):
+        pass
+
+    def get_data(self):
+        pass
+
+    def __repr__(self):
+        return str(self.value)
+
     @staticmethod
     def read_db_config(cfgfilename, section='mysql'):
         """ Read database configuration file and return a dictionary object
@@ -240,6 +257,9 @@ if __name__ == '__main__':
 
     # "cameras_cameraID"
     # data = dbconnect.get_row_by_id("cameras", 2)
-    data = dbconnect.get_value_by_id("cameras", "cameraName", 2)
+    # data = dbconnect.get_value_by_id("cameras", "cameraName", 2)
+    # data = dbconnect.get_value_by_id("lenses", "lensMake", 1)
+    data = dbconnect.show_tables()
     print(data)
+    print(type(data))
     dbconnect.close_connection()
