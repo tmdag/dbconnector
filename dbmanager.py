@@ -173,6 +173,7 @@ class Connect:
             logging.debug("EXECUTING: " + query)
             cursor.execute(query)
         cursor.close()
+        return 1
 
     def insert_single_value(self, tablename, column, values):
         ''' insert single values into table '''
@@ -201,6 +202,16 @@ class Connect:
         logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         cursor.close()
+
+    def raw_call(self, call):
+        ''' allows to execture raw call to DB '''
+        cursor = self.conn.cursor(buffered=True)
+        query = call
+        logging.debug("EXECUTING: " + query)
+        cursor.execute(query)
+        get_query = cursor.fetchall()
+        cursor.close()
+        return get_query   
 
     def save(self):
         ''' commit to database '''
@@ -259,7 +270,12 @@ if __name__ == '__main__':
     # data = dbconnect.get_row_by_id("cameras", 2)
     # data = dbconnect.get_value_by_id("cameras", "cameraName", 2)
     # data = dbconnect.get_value_by_id("lenses", "lensMake", 1)
-    data = dbconnect.show_tables()
+    # data = dbconnect.show_tables()
+    # print(data)
+    # print(type(data))
+    data = dbconnect.get_all_rows("showStructure")
     print(data)
-    print(type(data))
+    call = "SELECT s.structureName, s.structurePath, p.platformName FROM showStructure s LEFT JOIN platforms p ON s.platforms_platformID = p.platformID"
+    data = dbconnect.raw_call(call)
+    print(data)
     dbconnect.close_connection()
