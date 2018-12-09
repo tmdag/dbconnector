@@ -115,15 +115,30 @@ class Connect:
         cursor = self.conn.cursor(buffered=True)
         query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
         logging.debug("EXECUTING: " + query1)
-        cursor.execute(query1)
-        columnID = cursor.fetchone()[0]
+
+        try:
+            cursor.execute(query1)
+            columnID = cursor.fetchone()[0]
+        except Error as err:
+            logging.debug("\n\nSomething went wrong: {}".format(err))
+            return -1
+
         query2 = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, column, columnID, str(idx))
         logging.debug("EXECUTING: " + query2)
-        cursor.execute(query2)
-        single_row = cursor.fetchone()[0]
 
+        try:
+            cursor.execute(query2)
+            single_row = cursor.fetchone()[0]
+            return single_row
+        except Error as err:
+            logging.debug("\n\nSomething went wrong: {}".format(err))
+            return -1
+        except TypeError as err:
+            logging.debug("No shots to display".format(err))
+            return 0   
+        else:
+            return 1
         cursor.close()
-        return single_row
 
     def value_exists(self, tablename, column, value):
         ''' check whenever value exists in specified table under specified column '''
@@ -220,7 +235,7 @@ class Connect:
     def save(self):
         ''' commit to database '''
         self.conn.commit()
-        logging.debug('Changes Saved')
+        logging.debug('Changes Saved to DB')
 
     def as_dict(self):
         pass
@@ -282,4 +297,9 @@ if __name__ == '__main__':
     call = "SELECT s.structureName, s.structurePath, p.platformName FROM showStructure s LEFT JOIN platforms p ON s.platforms_platformID = p.platformID"
     data = dbconnect.raw_call(call)
     print(data)
+
+
+    info = dbconnect.get_value_by_id("shots", "shotName", 0)
+    print(info)
+
     dbconnect.close_connection()
