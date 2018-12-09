@@ -156,6 +156,7 @@ class Connect:
         logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         cursor.close()
+        return 1
 
     def update_single_row(self, tablename, key, **colvals):
         ''' insert single row/values into table.
@@ -182,6 +183,7 @@ class Connect:
         logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         cursor.close()
+        return 1
 
     def update_single_value(self, tablename, key, column, value):
         ''' insert single row/values into table.
@@ -194,6 +196,7 @@ class Connect:
         logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         cursor.close()
+        return 1
 
     def remove_by_value(self, tablename, column, values):
         ''' remove row by matching value '''
@@ -202,6 +205,7 @@ class Connect:
         logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         cursor.close()
+        return 1
 
     def raw_call(self, call):
         ''' allows to execture raw call to DB '''
