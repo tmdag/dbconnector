@@ -140,10 +140,10 @@ class Connect:
             return 1
         cursor.close()
 
-    def get_rows_from_foren_id(self, tablename, column, forencolumn, forenid):
+    def get_rows_from_foren_id(self, tablename, column, forencolumn, forenidx):
         ''' get rows from foren ids '''
         cursor = self.conn.cursor(buffered=True)
-        query1 = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, column, forencolumn, str(idx))
+        query1 = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, column, forencolumn, str(forenidx))
         logging.debug("EXECUTING: " + query1)
 
         try:
