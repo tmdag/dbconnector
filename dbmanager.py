@@ -134,7 +134,27 @@ class Connect:
             logging.debug("\n\nSomething went wrong: {}".format(err))
             return -1
         except TypeError as err:
-            logging.debug("No shots to display".format(err))
+            logging.debug("No results found".format(err))
+            return 0   
+        else:
+            return 1
+        cursor.close()
+
+    def get_rows_from_foren_id(self, tablename, column, forencolumn, forenid):
+        ''' get rows from foren ids '''
+        cursor = self.conn.cursor(buffered=True)
+        query1 = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, column, forencolumn, str(idx))
+        logging.debug("EXECUTING: " + query1)
+
+        try:
+            cursor.execute(query1)
+            all_rows = cursor.fetchall()
+            return all_rows
+        except Error as err:
+            logging.debug("\n\nSomething went wrong: {}".format(err))
+            return -1
+        except TypeError as err:
+            logging.debug("No results found".format(err))
             return 0   
         else:
             return 1
@@ -169,9 +189,14 @@ class Connect:
         values = colvals.get("values")
         query = "INSERT INTO {0:s} ({1:s}) VALUES ({2:s})".format(tablename, ','.join(map(str, columns)), ','.join(map(repr, values)))
         logging.debug("EXECUTING: " + query)
-        cursor.execute(query)
-        cursor.close()
-        return 1
+        try:
+            cursor.execute(query)
+            cursor.close()
+        except Error as err:
+            logging.debug("\n\nSomething went wrong: {}".format(err))
+            return -1
+        else:
+            return 1
 
     def update_single_row(self, tablename, key, **colvals):
         ''' insert single row/values into table.
@@ -299,7 +324,7 @@ if __name__ == '__main__':
     print(data)
 
 
-    info = dbconnect.get_value_by_id("shots", "shotName", 0)
+    info = dbconnect.get_column_names("shots")
     print(info)
 
     dbconnect.close_connection()
