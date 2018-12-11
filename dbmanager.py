@@ -148,7 +148,7 @@ class Connect:
 
         try:
             cursor.execute(query1)
-            all_rows = cursor.fetchall()
+            all_rows = [i[0] for i in cursor.fetchall()]
             return all_rows
         except Error as err:
             logging.debug("\n\nSomething went wrong: {}".format(err))
@@ -175,11 +175,16 @@ class Connect:
         cursor = self.conn.cursor(buffered=True)
         query = "SELECT @id:={3:s} AS id FROM {0:s} WHERE {1:s} = {2!r}".format(tablename, column, value, self.get_primary_key(tablename))
         logging.debug("EXECUTING: " + query)
-        cursor.execute(query)
-        get_query = cursor.fetchone()
-        value_id = get_query[0] if get_query != None else None
+        try:
+            cursor.execute(query)
+            get_query = cursor.fetchone()
+            value_id = get_query[0] if get_query != None else None
+        except Error as err:
+            logging.debug("\n\nSomething went wrong: {}".format(err))
+            return -1
+        else:
+            return value_id
         cursor.close()
-        return value_id
 
     def insert_single_row(self, tablename, **colvals):
         ''' insert single row/values into table.
@@ -317,14 +322,15 @@ if __name__ == '__main__':
     # data = dbconnect.show_tables()
     # print(data)
     # print(type(data))
-    data = dbconnect.get_all_rows("showStructure")
-    print(data)
-    call = "SELECT s.structureName, s.structurePath, p.platformName FROM showStructure s LEFT JOIN platforms p ON s.platforms_platformID = p.platformID"
-    data = dbconnect.raw_call(call)
-    print(data)
+    # data = dbconnect.get_all_rows("showStructure")
+    # print(data)
+    # call = "SELECT s.structureName, s.structurePath, p.platformName FROM showStructure s LEFT JOIN platforms p ON s.platforms_platformID = p.platformID"
+    # data = dbconnect.raw_call(call)
+    # print(data)
 
-
-    info = dbconnect.get_column_names("shots")
-    print(info)
+    data = dbconnect.get_rows_from_foren_id("shots", "shotName", "sequences_seqID", 8)
+    print(data)
+    # info = dbconnect.get_column_names("shots")
+    # print(info)
 
     dbconnect.close_connection()
