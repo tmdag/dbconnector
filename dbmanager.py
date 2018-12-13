@@ -140,15 +140,19 @@ class Connect:
             return 1
         cursor.close()
 
-    def get_rows_from_foren_id(self, tablename, column, forencolumn, forenidx):
+    def get_rows_from_columns_by_foren_id(self, tablename, forencolumn, forenidx, **cols):
         ''' get rows from foren ids '''
         cursor = self.conn.cursor(buffered=True)
-        query1 = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, column, forencolumn, str(forenidx))
+        columns = cols.get("columns")
+        query1 = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, ','.join(map(str, columns)), forencolumn, str(forenidx))
         logging.debug("EXECUTING: " + query1)
 
         try:
             cursor.execute(query1)
-            all_rows = [i[0] for i in cursor.fetchall()]
+            if len(columns)==1:
+                all_rows = [i[0] for i in cursor.fetchall()]
+            else:
+                all_rows = cursor.fetchall()
             return all_rows
         except Error as err:
             logging.debug("\n\nSomething went wrong: {}".format(err))
@@ -328,7 +332,10 @@ if __name__ == '__main__':
     # data = dbconnect.raw_call(call)
     # print(data)
 
-    data = dbconnect.get_rows_from_foren_id("shots", "shotName", "sequences_seqID", 8)
+    columns = ['seqName']
+    # data = dbconnect.get_rows_from_columns_by_foren_id("sequences", "seqName", "shows_showID", 24)
+    data = dbconnect.get_rows_from_columns_by_foren_id("sequences", "shows_showID", 24, columns=columns)
+    # data = dbconnect.get_rows_from_columns("sequences", columns=columns)
     print(data)
     # info = dbconnect.get_column_names("shots")
     # print(info)
