@@ -147,10 +147,11 @@ class Connect:
             columns = ','.join(map(str, cols.get("columns"))) 
         else:
             columns = cols.get("columns")
-        query1 = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, columns, forencolumn, str(forenidx))
-
+        query = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, columns, forencolumn, str(forenidx))
+        
         try:
-            cursor.execute(query1)
+            cursor.execute(query)
+            logging.debug("EXECUTING: " + query)
             if len(cols.get("columns"))==1 or isinstance(cols.get("columns"), str):
                 all_rows = [i[0] for i in cursor.fetchall()]
             else:
@@ -339,7 +340,7 @@ class Connect:
 
 
 if __name__ == '__main__':
-    dbconnect = Connect('dbconfig.ini', debug="False")
+    dbconnect = Connect('dbconfig.ini', debug="True")
     # data = dbconnect.get_column_names("hdrs")
     # data = dbconnect.get_primary_key("cameras")
     # data = dbconnect.get_value_id("cameras", "cameraName", "GoPro")
@@ -360,10 +361,12 @@ if __name__ == '__main__':
     # data = dbconnect.raw_call(call)
     # print(data)
 
-    columns = ["rangeStart", "rangeEnd", "handles"]
-    # data = dbconnect.get_rows_from_columns_by_foren_id("sequences", "seqName", "shows_showID", 24)
-    data = dbconnect.get_rows_from_columns_by_foren_id("shots", "shotID", 28, columns=columns)
-   # data = dbconnect.get_rows_from_columns("sequences", columns=columns)
+    # columns = ["rangeStart", "rangeEnd", "handles"]
+    seqdb_columns = ["seqId", "seqName"]
+    data = dbconnect.get_rows_from_columns_by_foren_id("sequences", "shows_showID", 24, columns=seqdb_columns)
+    
+    # data = dbconnect.get_rows_from_columns_by_foren_id("shots", "shotID", 28, columns=columns)
+    # data = dbconnect.get_rows_from_columns("sequences", columns=columns)
     print(data)
     # info = dbconnect.get_column_names("shots")
     # print(info)
