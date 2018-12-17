@@ -143,13 +143,15 @@ class Connect:
     def get_rows_from_columns_by_foren_id(self, tablename, forencolumn, forenidx, **cols):
         ''' get rows from foren ids '''
         cursor = self.conn.cursor(buffered=True)
-        columns = cols.get("columns")
-        query1 = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, ','.join(map(str, columns)), forencolumn, str(forenidx))
-        logging.debug("EXECUTING: " + query1)
+        if not isinstance(cols.get("columns"), str):
+            columns = ','.join(map(str, cols.get("columns"))) 
+        else:
+            columns = cols.get("columns")
+        query1 = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, columns, forencolumn, str(forenidx))
 
         try:
             cursor.execute(query1)
-            if len(columns)==1:
+            if len(cols.get("columns"))==1 or isinstance(cols.get("columns"), str):
                 all_rows = [i[0] for i in cursor.fetchall()]
             else:
                 all_rows = cursor.fetchall()
@@ -358,12 +360,13 @@ if __name__ == '__main__':
     # data = dbconnect.raw_call(call)
     # print(data)
 
-    columns = ['seqName']
+    columns = ["rangeStart", "rangeEnd", "handles"]
     # data = dbconnect.get_rows_from_columns_by_foren_id("sequences", "seqName", "shows_showID", 24)
-    data = dbconnect.get_rows_from_columns_by_foren_id("sequences", "shows_showID", 24, columns=columns)
-    # data = dbconnect.get_rows_from_columns("sequences", columns=columns)
+    data = dbconnect.get_rows_from_columns_by_foren_id("shots", "shotID", 28, columns=columns)
+   # data = dbconnect.get_rows_from_columns("sequences", columns=columns)
     print(data)
     # info = dbconnect.get_column_names("shots")
     # print(info)
+
 
     dbconnect.close_connection()
