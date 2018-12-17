@@ -154,7 +154,7 @@ class Connect:
             if len(cols.get("columns"))==1 or isinstance(cols.get("columns"), str):
                 all_rows = [i[0] for i in cursor.fetchall()]
             else:
-                all_rows = cursor.fetchall()
+                all_rows = [i for i in cursor.fetchall()[0]]
             return all_rows
         except Error as err:
             logging.debug("\n\nSomething went wrong: {}".format(err))
