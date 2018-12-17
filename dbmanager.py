@@ -215,11 +215,11 @@ class Connect:
         primary_key_column = self.get_primary_key(tablename)
         columns = colvals.get("columns")
         values = colvals.get("values")
-        
+
         if len(columns)!=len(values):
             logging.debug("\n\nNumber of columns and values missmatch")
             return -1
-            break
+            raise ValueError('Number of columns and values missmatch')
 
         if len(columns)>1:
             for idx, value in enumerate(columns):
