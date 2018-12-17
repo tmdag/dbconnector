@@ -216,12 +216,25 @@ class Connect:
         columns = colvals.get("columns")
         values = colvals.get("values")
 
-        if len(columns)!=len(values):
-            logging.debug("\n\nNumber of columns and values missmatch")
-            return -1
-            raise ValueError('Number of columns and values missmatch')
+        # check if colvals is not just a single string
+        if isinstance(columns, str):
+            single_column = columns
+            single_value = values
+            query = "UPDATE {0:s} SET {1:s} = {2!r} WHERE {3:s} = {4:s}".format(tablename, single_column, single_value, primary_key_column, str(key))
+            logging.debug("EXECUTING: " + query)
+            try:
+                cursor.execute(query)
+            except Error as err:
+                logging.debug("\n\nSomething went wrong: {}".format(err))
+                return -1
+            else:
+                return 1
+        else:
+            if len(columns)!=len(values):
+                logging.debug("\n\nNumber of columns and values missmatch")
+                return -1
+                raise ValueError('Number of columns and values missmatch')
 
-        if len(columns)>1:
             for idx, value in enumerate(columns):
                 single_column = value
                 single_value = values[idx]
@@ -234,18 +247,7 @@ class Connect:
                     return -1
                 else:
                     return 1
-        else:
-            single_column = columns
-            single_value = values
-            query = "UPDATE {0:s} SET {1:s} = {2!r} WHERE {3:s} = {4:s}".format(tablename, single_column, single_value, primary_key_column, str(key))
-            logging.debug("EXECUTING: " + query)
-            try:
-                cursor.execute(query)
-            except Error as err:
-                logging.debug("\n\nSomething went wrong: {}".format(err))
-                return -1
-            else:
-                return 1
+
         cursor.close()
         
 
