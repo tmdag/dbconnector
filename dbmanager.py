@@ -155,7 +155,8 @@ class Connect:
             if len(cols.get("columns"))==1 or isinstance(cols.get("columns"), str):
                 all_rows = [i[0] for i in cursor.fetchall()]
             else:
-                all_rows = [i for i in cursor.fetchall()[0]]
+ 
+                all_rows =cursor.fetchall()
             return all_rows
         except Error as err:
             logging.debug("\n\nSomething went wrong: {}".format(err))
@@ -364,8 +365,9 @@ if __name__ == '__main__':
     # columns = ["rangeStart", "rangeEnd", "handles"]
     seqdb_columns = ["seqId", "seqName"]
     data = dbconnect.get_rows_from_columns_by_foren_id("sequences", "shows_showID", 24, columns=seqdb_columns)
-    
-    # data = dbconnect.get_rows_from_columns_by_foren_id("shots", "shotID", 28, columns=columns)
+    print(data)
+    columns = ["rangeStart", "rangeEnd", "handles"]
+    data = dbconnect.get_rows_from_columns_by_foren_id("shots", "shotID", 28, columns=columns)
     # data = dbconnect.get_rows_from_columns("sequences", columns=columns)
     print(data)
     # info = dbconnect.get_column_names("shots")
