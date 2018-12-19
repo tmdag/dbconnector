@@ -121,7 +121,7 @@ class Connect:
             columnID = cursor.fetchone()[0]
         except Error as err:
             logging.debug("\n\nSomething went wrong: {}".format(err))
-            return -1
+            return 0
 
         query2 = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, column, columnID, str(idx))
         logging.debug("EXECUTING: " + query2)
@@ -132,7 +132,7 @@ class Connect:
             return single_row
         except Error as err:
             logging.debug("\n\nSomething went wrong: {}".format(err))
-            return -1
+            return 0
         except TypeError as err:
             logging.debug("No results found".format(err))
             return 0   
@@ -160,7 +160,7 @@ class Connect:
             return all_rows
         except Error as err:
             logging.debug("\n\nSomething went wrong: {}".format(err))
-            return -1
+            return 0
         except TypeError as err:
             logging.debug("No results found".format(err))
             return 0   
@@ -178,6 +178,36 @@ class Connect:
         cursor.close()
         return number_of_rows_found
 
+    def value_exists_multiple(self, tablename, **colvals):
+        ''' check whenever value exists in specified table under specified column '''
+        cursor = self.conn.cursor(buffered=True)
+
+        columns = colvals.get("columns")
+        values = colvals.get("values")
+        keys = zip(columns, values)
+        query = "SELECT {1:s}, COUNT(*) FROM {0:s} WHERE".format(tablename, columns[0])
+
+        elements = (len(columns))
+        if elements>1:
+            for i, (key, value) in enumerate(keys):
+                query += " {0:s} = {1!r} ".format(key, value)
+                query += "AND" if i<elements-1 else ""
+        query += "GROUP BY {0:s}".format(columns[0])
+
+        logging.debug("EXECUTING: " + query)
+        try:
+            cursor.execute(query)
+            number_of_rows_found = cursor.rowcount
+            return number_of_rows_found
+        except Error as err:
+            logging.debug("\n\nSomething went wrong: {}".format(err))
+            return 0
+        except TypeError as err:
+            logging.debug("No results found".format(err))
+            return 0
+
+        cursor.close()
+
     def get_value_id(self, tablename, column, value):
         ''' check whenever value exists in specified table under specified column '''
         cursor = self.conn.cursor(buffered=True)
@@ -189,7 +219,7 @@ class Connect:
             value_id = get_query[0] if get_query != None else None
         except Error as err:
             logging.debug("\n\nSomething went wrong: {}".format(err))
-            return -1
+            return 0
         else:
             return value_id
         cursor.close()
@@ -205,8 +235,8 @@ class Connect:
         try:
             cursor.execute(query)
         except Error as err:
-            logging.debug("\n\nSomething went wrong: {}".format(err))
-            return -1
+            logging.debug("\n\nSomething went wrong: {}\n\n".format(err))
+            return 0
         else:
             return 1
         cursor.close()
@@ -230,13 +260,13 @@ class Connect:
                 cursor.execute(query)
             except Error as err:
                 logging.debug("\n\nSomething went wrong: {}".format(err))
-                return -1
+                return 0
             else:
                 return 1
         else:
             if len(columns)!=len(values):
                 logging.debug("\n\nNumber of columns and values missmatch")
-                return -1
+                return 0
                 raise ValueError('Number of columns and values missmatch')
 
             for idx, value in enumerate(columns):
@@ -248,7 +278,7 @@ class Connect:
                     cursor.execute(query)
                 except Error as err:
                     logging.debug("\n\nSomething went wrong: {}".format(err))
-                    return -1
+                    return 0
                 else:
                     return 1
 
@@ -342,36 +372,6 @@ class Connect:
 
 if __name__ == '__main__':
     dbconnect = Connect('dbconfig.ini', debug="True")
-    # data = dbconnect.get_column_names("hdrs")
-    # data = dbconnect.get_primary_key("cameras")
-    # data = dbconnect.get_value_id("cameras", "cameraName", "GoPro")
-
-    # get_camera_name="Canon EOS 5D Mark II"
-    # data = dbconnect.get_value_id("cameras", "cameraName", get_camera_name.strip())
-
-    # "cameras_cameraID"
-    # data = dbconnect.get_row_by_id("cameras", 2)
-    # data = dbconnect.get_value_by_id("cameras", "cameraName", 2)
-    # data = dbconnect.get_value_by_id("lenses", "lensMake", 1)
-    # data = dbconnect.show_tables()
-    # print(data)
-    # print(type(data))
-    # data = dbconnect.get_all_rows("showStructure")
-    # print(data)
-    # call = "SELECT s.structureName, s.structurePath, p.platformName FROM showStructure s LEFT JOIN platforms p ON s.platforms_platformID = p.platformID"
-    # data = dbconnect.raw_call(call)
-    # print(data)
-
-    # columns = ["rangeStart", "rangeEnd", "handles"]
-    seqdb_columns = ["seqId", "seqName"]
-    data = dbconnect.get_rows_from_columns_by_foren_id("sequences", "shows_showID", 24, columns=seqdb_columns)
-    print(data)
-    columns = ["rangeStart", "rangeEnd", "handles"]
-    data = dbconnect.get_rows_from_columns_by_foren_id("shots", "shotID", 28, columns=columns)
-    # data = dbconnect.get_rows_from_columns("sequences", columns=columns)
-    print(data)
-    # info = dbconnect.get_column_names("shots")
-    # print(info)
 
 
     dbconnect.close_connection()
