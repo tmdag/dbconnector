@@ -110,6 +110,49 @@ class Connect:
         cursor.close()
         return single_row
 
+    def get_value_id(self, tablename, column, value):
+        ''' check whenever value exists in specified table under specified column '''
+        cursor = self.conn.cursor(buffered=True)
+        query = "SELECT @id:={3:s} AS id FROM {0:s} WHERE {1:s} = {2!r}".format(tablename, column, value, self.get_primary_key(tablename))
+        logging.debug("EXECUTING: " + query)
+        try:
+            cursor.execute(query)
+            get_query = cursor.fetchone()
+            value_id = get_query[0] if get_query != None else None
+        except Error as err:
+            logging.debug("\n\nSomething went wrong: {}".format(err))
+            return 0
+        else:
+            return value_id
+        cursor.close()
+
+    def get_value_id_multiple(self, tablename, **colvals):
+        ''' gets value id by multiple entries comparison '''
+        cursor = self.conn.cursor(buffered=True)
+
+        columns = colvals.get("columns")
+        values = colvals.get("values")
+        keys = zip(columns, values)
+
+        query = "SELECT @id:={0:s} AS id FROM {1:s} WHERE".format(self.get_primary_key(tablename), tablename)
+
+        elements = (len(columns))
+        for i, (key, value) in enumerate(keys):
+            query += " {0:s} = {1!r} ".format(key, value)
+            query += "AND" if i<elements-1 else ""
+        logging.debug("EXECUTING: " + query)
+
+        try:
+            cursor.execute(query)
+            get_query = cursor.fetchone()
+            value_id = get_query[0] if get_query != None else None
+        except Error as err:
+            logging.debug("\n\nSomething went wrong: {}".format(err))
+            return 0
+        else:
+            return value_id
+        cursor.close()
+
     def get_value_by_id(self, tablename, column, idx):
         ''' get row data by by specific columns '''
         cursor = self.conn.cursor(buffered=True)
@@ -208,21 +251,6 @@ class Connect:
 
         cursor.close()
 
-    def get_value_id(self, tablename, column, value):
-        ''' check whenever value exists in specified table under specified column '''
-        cursor = self.conn.cursor(buffered=True)
-        query = "SELECT @id:={3:s} AS id FROM {0:s} WHERE {1:s} = {2!r}".format(tablename, column, value, self.get_primary_key(tablename))
-        logging.debug("EXECUTING: " + query)
-        try:
-            cursor.execute(query)
-            get_query = cursor.fetchone()
-            value_id = get_query[0] if get_query != None else None
-        except Error as err:
-            logging.debug("\n\nSomething went wrong: {}".format(err))
-            return 0
-        else:
-            return value_id
-        cursor.close()
 
     def insert_single_row(self, tablename, **colvals):
         ''' insert single row/values into table.
@@ -308,13 +336,42 @@ class Connect:
         return 1
 
     def remove_by_value(self, tablename, column, values):
-        ''' remove row by matching value '''
+        ''' remove row by matching value. Very dangerous method. Better to use remove by ID '''
+
         cursor = self.conn.cursor(buffered=True)
         query = "DELETE FROM {0:s} WHERE {1:s} = {2!r}".format(tablename, column, values)
         logging.debug("EXECUTING: " + query)
         cursor.execute(query)
         cursor.close()
         return 1
+
+    def remove_by_id(self, tablename, idx):
+        ''' remove row by ID '''
+        cursor = self.conn.cursor(buffered=True)
+        query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
+        logging.debug("EXECUTING: " + query1)
+
+        try:
+            cursor.execute(query1)
+            columnID = cursor.fetchone()[0]
+        except Error as err:
+            logging.debug("\n\nSomething went wrong: {}".format(err))
+            return 0
+
+        query2 = "DELETE FROM {0:s} WHERE {1:s} = {2!r}".format(tablename, columnID, str(idx))
+        logging.debug("EXECUTING: " + query2)
+
+        try:
+            cursor.execute(query2)
+            return 1
+        except Error as err:
+            logging.debug("\n\nSomething went wrong: {}".format(err))
+            return 0
+        except TypeError as err:
+            logging.debug("No results found".format(err))
+            return 0   
+
+        cursor.close()
 
     def raw_call(self, call):
         ''' allows to execture raw call to DB '''
@@ -372,6 +429,45 @@ class Connect:
 
 if __name__ == '__main__':
     dbconnect = Connect('dbconfig.ini', debug="True")
+    # data = dbconnect.get_column_names("hdrs")
+    # data = dbconnect.get_primary_key("cameras")
+    # data = dbconnect.get_value_id("cameras", "cameraName", "GoPro")
 
+    # get_camera_name="Canon EOS 5D Mark II"
+    # data = dbconnect.get_value_id("cameras", "cameraName", get_camera_name.strip())
+
+    # "cameras_cameraID"
+    # data = dbconnect.get_row_by_id("cameras", 2)
+    # data = dbconnect.get_value_by_id("cameras", "cameraName", 2)
+    # data = dbconnect.get_value_by_id("lenses", "lensMake", 1)
+    # data = dbconnect.show_tables()
+    # print(data)
+    # print(type(data))
+    # data = dbconnect.get_all_rows("showStructure")
+    # print(data)
+    # call = "SELECT s.structureName, s.structurePath, p.platformName FROM showStructure s LEFT JOIN platforms p ON s.platforms_platformID = p.platformID"
+    # data = dbconnect.raw_call(call)
+    # print(data)
+
+    # columns = ["rangeStart", "rangeEnd", "handles"]
+    # seqdb_columns = ["seqId", "seqName"]
+    # data = dbconnect.get_rows_from_columns_by_foren_id("sequences", "shows_showID", 24, columns=seqdb_columns)
+    # print(data)
+    # columns = ["rangeStart", "rangeEnd", "handles"]
+    # data = dbconnect.get_rows_from_columns_by_foren_id("shots", "shotID", 28, columns=columns)
+    # data = dbconnect.get_rows_from_columns("sequences", columns=columns)
+    # print(data)
+    # info = dbconnect.get_column_names("shots")
+    # print(info)
+    # columns = ['seqName', 'shows_showID']
+    # values = ['ldev_seq', '22']
+
+    # data = dbconnect.value_exists_keys('sequences', columns=columns, values=values)
+    # print(data)
+
+    columns = ['seqName', 'shows_showID']
+    values = ['fxdev_seq', '24']
+    data = dbconnect.get_value_id_multiple('sequences', columns=columns, values=values)
+    print(data)
 
     dbconnect.close_connection()
