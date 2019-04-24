@@ -6,7 +6,10 @@ this dbmanager wraps them around to more pythonic functions.
 import sys
 import os.path
 import logging
-from configparser import ConfigParser
+if sys.version_info[0] < 3:
+    from configparser import ConfigParser
+else:
+    from configparser import ConfigParser
 from mysql.connector import MySQLConnection, Error, errorcode
 ##=====================================
 
@@ -65,7 +68,7 @@ class Connect:
         return primary_key_name
 
     def get_column_names(self, tablename):
-        ''' list column names of a table '''
+        ''' list column names of a given tablename '''
         cursor = self.conn.cursor(buffered=True)
         query = "SELECT column_name FROM information_schema.columns  WHERE table_schema={0!r} AND table_name={1!r} ORDER BY ORDINAL_POSITION".format(self.db_name, tablename)
         logging.debug("EXECUTING: " + query)
@@ -148,13 +151,13 @@ class Connect:
             value_id = get_query[0] if get_query != None else None
         except Error as err:
             logging.debug("\n\nSomething went wrong: {}".format(err))
-            return 0
+            return -1
         else:
             return value_id
         cursor.close()
 
     def get_value_by_id(self, tablename, column, idx):
-        ''' get row data by by specific columns '''
+        ''' get row data by by checking its MAIN key '''
         cursor = self.conn.cursor(buffered=True)
         query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
         logging.debug("EXECUTING: " + query1)
@@ -184,7 +187,7 @@ class Connect:
         cursor.close()
 
     def get_rows_from_columns_by_foren_id(self, tablename, forencolumn, forenidx, **cols):
-        ''' get rows from foren ids '''
+        ''' get rows from foren ids. For eg get a scolumn by comparing values of different column like shot name where seqID = 3 '''
         cursor = self.conn.cursor(buffered=True)
         if not isinstance(cols.get("columns"), str):
             columns = ','.join(map(str, cols.get("columns"))) 
@@ -391,6 +394,10 @@ class Connect:
     def as_dict(self):
         pass
 
+    def as_list(self):
+        db_data = list(tuple(zip(*db_data))[0])
+        return db_data
+
     def get_data(self):
         pass
 
@@ -451,7 +458,7 @@ if __name__ == '__main__':
 
     # columns = ["rangeStart", "rangeEnd", "handles"]
     # seqdb_columns = ["seqId", "seqName"]
-    # data = dbconnect.get_rows_from_columns_by_foren_id("sequences", "shows_showID", 24, columns=seqdb_columns)
+    # data = dbconnect.get_rows_from_columns_by_foren_id("sequences", "shows_showID", 31, columns=seqdb_columns)
     # print(data)
     # columns = ["rangeStart", "rangeEnd", "handles"]
     # data = dbconnect.get_rows_from_columns_by_foren_id("shots", "shotID", 28, columns=columns)
@@ -465,9 +472,33 @@ if __name__ == '__main__':
     # data = dbconnect.value_exists_keys('sequences', columns=columns, values=values)
     # print(data)
 
-    columns = ['seqName', 'shows_showID']
-    values = ['fxdev_seq', '24']
-    data = dbconnect.get_value_id_multiple('sequences', columns=columns, values=values)
+    # columns = ['seqName', 'shows_showID']
+    # values = ['fxdev_seq', '24']
+    # data = dbconnect.get_value_id_multiple('sequences', columns=columns, values=values)
+    # print(data)
+
+
+
+    # data = dbconnect.raw_call("SELECT {tableA:s}.{get:s} FROM {tableA:s} INNER JOIN {tableB:s} ON {tableB:s}.{keyBid:s} = {tableA:s}.{keyAid:s} WHERE {tableB:s}.{keyBname:s} = {where!r}".format(
+    #     tableA="shots", tableB="shows", keyAid="shows_showID", keyBname="showName", keyBid="showID", get="shotName", where="SPLASH"))
+
+    # data = dbconnect.raw_call("SELECT shots.shotName FROM shots INNER JOIN shows ON shows.showID = shots.shows_showID WHERE shows.showName = 'SPLASH'")
+
+    # # EXAMPLE of get show structure by joining show table with show.structureID = structure.structureID and providing show ID as a reference point
+    # show_structure = dbconnect.raw_call("SELECT showStructure.structureName FROM showStructure INNER JOIN shows ON shows.showStructure_showStructureID = showStructure.showStructureID WHERE shows.showID = {!r}".format(show_id))[0][0]
+
+
+    # current_show = 'SPLASH'
+    # current_shot = 'wall_001'
+    # current_showID = dbconnect.get_value_id('shows', 'showName', current_show)
+
+    # columns = ['shotName','shows_showID']
+    # values = [current_shot, current_showID]
+    # data = dbconnect.get_value_id_multiple('shots', columns=columns, values=values)
+    # print(data)
+
+
+    data = dbconnect.get_column_names("hdrs")
     print(data)
 
     dbconnect.close_connection()
