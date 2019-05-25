@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(name='dbconnector',
       version='0.1',
-      description='The dbconnector joke in the world',
+      description='helper modules for MySQL DB connector',
       url='http://github.com/tmdag/dbconnector',
       author='Albert Szostkiewicz',
       author_email='tmdag@tmdag.com',
