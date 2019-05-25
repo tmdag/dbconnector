@@ -21,7 +21,7 @@ Clone this repo and start using dbmanager.
 ## Config file :
 dbconnector expects configuration file with your database details. Example of such config:
 config.ini
-```
+```javascript
 [mysql]
 user = myusername
 password = MySectetPassword
@@ -31,26 +31,27 @@ database = myDatabase
 You can pass config location to the class as an argument.
 
 ## Connection : 
+
 Each connection with database is made by creating class instance and requires database closure with 'close_connection()' method.
 
 ## Todo:
-- [] Write Todo
-- []  
+
+- [ ] Support for single file DB
+- [ ] more sophisticated calls
+- [ ] implement as_dict / as_list
 
 ## Example:
-```
+
+```python
 from dbconnector import dbmanager
 db_config = 'config/config.ini'
 dbconnect = dbmanager.Connect(cfg=db_config)
 
 db_tables = dbconnect.show_tables()
-print(db_tables)
-
 my_column_names = dbconnect.get_column_names("myTable")
-print(my_column_names)
-
 primary_key_of_table = dbconnect.get_primary_key("myTable")
-print(primary_key_of_table)
+id_of_specific_entry = dbconnect.get_value_id("cameras", "cameraName", "GoPro")
+raw_mysql_call = dbconnect.raw_call("SELECT shots.shotName FROM shots INNER JOIN shows ON shows.showID = shots.shows_showID WHERE shows.showName = 'MYSHOT'")
 
 dbconnect.save() # save (commit) if there were any changes made in the database.
 dbconnect.close_connection()

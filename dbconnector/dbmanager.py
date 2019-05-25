@@ -254,7 +254,6 @@ class Connect:
 
         cursor.close()
 
-
     def insert_single_row(self, tablename, **colvals):
         ''' insert single row/values into table.
         requires 'columns' and 'values' as an argument '''
@@ -314,7 +313,6 @@ class Connect:
                     return 1
 
         cursor.close()
-        
 
     def insert_single_value(self, tablename, column, values):
         ''' insert single values into table '''
@@ -436,69 +434,6 @@ class Connect:
 
 if __name__ == '__main__':
     dbconnect = Connect('dbconfig.ini', debug="True")
-    # data = dbconnect.get_column_names("hdrs")
-    # data = dbconnect.get_primary_key("cameras")
-    # data = dbconnect.get_value_id("cameras", "cameraName", "GoPro")
-
-    # get_camera_name="Canon EOS 5D Mark II"
-    # data = dbconnect.get_value_id("cameras", "cameraName", get_camera_name.strip())
-
-    # "cameras_cameraID"
-    # data = dbconnect.get_row_by_id("cameras", 2)
-    # data = dbconnect.get_value_by_id("cameras", "cameraName", 2)
-    # data = dbconnect.get_value_by_id("lenses", "lensMake", 1)
-    # data = dbconnect.show_tables()
-    # print(data)
-    # print(type(data))
-    # data = dbconnect.get_all_rows("showStructure")
-    # print(data)
-    # call = "SELECT s.structureName, s.structurePath, p.platformName FROM showStructure s LEFT JOIN platforms p ON s.platforms_platformID = p.platformID"
-    # data = dbconnect.raw_call(call)
-    # print(data)
-
-    # columns = ["rangeStart", "rangeEnd", "handles"]
-    # seqdb_columns = ["seqId", "seqName"]
-    # data = dbconnect.get_rows_from_columns_by_foren_id("sequences", "shows_showID", 31, columns=seqdb_columns)
-    # print(data)
-    # columns = ["rangeStart", "rangeEnd", "handles"]
-    # data = dbconnect.get_rows_from_columns_by_foren_id("shots", "shotID", 28, columns=columns)
-    # data = dbconnect.get_rows_from_columns("sequences", columns=columns)
-    # print(data)
-    # info = dbconnect.get_column_names("shots")
-    # print(info)
-    # columns = ['seqName', 'shows_showID']
-    # values = ['ldev_seq', '22']
-
-    # data = dbconnect.value_exists_keys('sequences', columns=columns, values=values)
-    # print(data)
-
-    # columns = ['seqName', 'shows_showID']
-    # values = ['fxdev_seq', '24']
-    # data = dbconnect.get_value_id_multiple('sequences', columns=columns, values=values)
-    # print(data)
-
-
-
-    # data = dbconnect.raw_call("SELECT {tableA:s}.{get:s} FROM {tableA:s} INNER JOIN {tableB:s} ON {tableB:s}.{keyBid:s} = {tableA:s}.{keyAid:s} WHERE {tableB:s}.{keyBname:s} = {where!r}".format(
-    #     tableA="shots", tableB="shows", keyAid="shows_showID", keyBname="showName", keyBid="showID", get="shotName", where="SPLASH"))
-
-    # data = dbconnect.raw_call("SELECT shots.shotName FROM shots INNER JOIN shows ON shows.showID = shots.shows_showID WHERE shows.showName = 'SPLASH'")
-
-    # # EXAMPLE of get show structure by joining show table with show.structureID = structure.structureID and providing show ID as a reference point
-    # show_structure = dbconnect.raw_call("SELECT showStructure.structureName FROM showStructure INNER JOIN shows ON shows.showStructure_showStructureID = showStructure.showStructureID WHERE shows.showID = {!r}".format(show_id))[0][0]
-
-
-    # current_show = 'SPLASH'
-    # current_shot = 'wall_001'
-    # current_showID = dbconnect.get_value_id('shows', 'showName', current_show)
-
-    # columns = ['shotName','shows_showID']
-    # values = [current_shot, current_showID]
-    # data = dbconnect.get_value_id_multiple('shots', columns=columns, values=values)
-    # print(data)
-
-
     data = dbconnect.get_column_names("hdrs")
     print(data)
-
     dbconnect.close_connection()
