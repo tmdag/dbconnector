@@ -13,7 +13,7 @@ While official python module is using 'low level' MySQL querries, this dbmanager
 
 ## Installation:
 ```bash
-pip install git+https://github.com/tmdag/dbconnector
+$ pip install git+https://github.com/tmdag/dbconnector
 ```
 
 ## Config file :
