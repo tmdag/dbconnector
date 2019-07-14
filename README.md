@@ -12,6 +12,7 @@ This python script is using official MySQL python connector from [MySQL connecto
 While official python module is using 'low level' MySQL querries, this dbmanager wraps them around to more pythonic functions.
 
 ## Installation:
+
 ```bash
 $ pip install git+https://github.com/tmdag/dbconnector
 ```

@@ -254,16 +254,33 @@ class Connect:
 
         cursor.close()
 
-    def insert_single_row(self, tablename, **colvals):
+    def insert_single_row(self, tablename,**colvals):
         ''' insert single row/values into table.
         requires 'columns' and 'values' as an argument '''
         cursor = self.conn.cursor(buffered=True)
         columns = colvals.get("columns")
-        values = colvals.get("values")
-        query = "INSERT INTO {0:s} ({1:s}) VALUES ({2:s})".format(tablename, ','.join(map(str, columns)), ','.join(map(repr, values)))
+        values = tuple(colvals.get("values"))
+        query = "INSERT INTO {} ({}) VALUES ({})".format(tablename, ', '.join(columns), ','.join(['%s']*len(values)))
+
+        logging.debug("EXECUTING: " + query%values)
+        try:
+            cursor.execute(query, values)
+        except Error as err:
+            logging.debug("\n\nSomething went wrong: {}\n\n".format(err))
+            return 0
+        else:
+            return 1
+        cursor.close()
+
+    def insert_single_row2(self, tablename, dbdata):
+        ''' insert single row/values into table.
+        requires 'columns' and 'values' as an argument '''
+        cursor = self.conn.cursor(buffered=True)
+        columns = dbdata.keys()
+        query = "INSERT INTO {} ({}) VALUES ({})".format(tablename, ', '.join(columns), ','.join(['%({})s'.format(colname) for colname in columns]))
         logging.debug("EXECUTING: " + query)
         try:
-            cursor.execute(query)
+            cursor.execute(query, dbdata)
         except Error as err:
             logging.debug("\n\nSomething went wrong: {}\n\n".format(err))
             return 0
@@ -436,4 +453,6 @@ if __name__ == '__main__':
     dbconnect = Connect('dbconfig.ini', debug="True")
     data = dbconnect.get_column_names("hdrs")
     print(data)
+
+    # dbconnect.save()
     dbconnect.close_connection()
