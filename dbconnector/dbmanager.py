@@ -261,7 +261,6 @@ class Connect:
         columns = colvals.get("columns")
         values = tuple(colvals.get("values"))
         query = "INSERT INTO {} ({}) VALUES ({})".format(tablename, ', '.join(columns), ','.join(['%s']*len(values)))
-
         logging.debug("EXECUTING: " + query%values)
         try:
             cursor.execute(query, values)
@@ -273,11 +272,14 @@ class Connect:
         cursor.close()
 
     def insert_single_row2(self, tablename, dbdata):
-        ''' insert single row/values into table.
-        requires 'columns' and 'values' as an argument '''
+        ''' insert single row by passing dictionary 
+        db_data={
+            "uuid" : '00000',
+            "columnA" : 51}
+        '''
         cursor = self.conn.cursor(buffered=True)
         columns = dbdata.keys()
-        query = "INSERT INTO {} ({}) VALUES ({})".format(tablename, ', '.join(columns), ','.join(['%({})s'.format(colname) for colname in columns]))
+        query = "INSERT INTO {} ({}) VALUES ({})".format(tablename, ', '.join(columns), ','.join(['%({})'.format(colname) for colname in columns]))
         logging.debug("EXECUTING: " + query)
         try:
             cursor.execute(query, dbdata)
