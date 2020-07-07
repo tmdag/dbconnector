@@ -266,9 +266,12 @@ class Connect:
             cursor.execute(query, values)
         except Error as err:
             logging.debug("\n\nSomething went wrong: {}\n\n".format(err))
-            return 0
+            return -1
         else:
-            return 1
+            cursor.execute("SELECT LAST_INSERT_ID();")
+            insert_id = cursor.fetchone()
+            return insert_id[0]
+            # return 1
         cursor.close()
 
     def insert_single_row2(self, tablename, dbdata):
@@ -285,9 +288,12 @@ class Connect:
             cursor.execute(query, dbdata)
         except Error as err:
             logging.debug("\n\nSomething went wrong: {}\n\n".format(err))
-            return 0
+            return -1
         else:
-            return 1
+            cursor.execute("SELECT LAST_INSERT_ID();")
+            insert_id = cursor.fetchone()
+            return insert_id[0]
+            # return 1
         cursor.close()
 
     def update_single_row(self, tablename, key, **colvals):
@@ -338,9 +344,16 @@ class Connect:
         cursor = self.conn.cursor(buffered=True)
         query = "INSERT INTO {0:s} ({1:s}) VALUES({2!r})".format(tablename, column, values)
         logging.debug("EXECUTING: " + query)
-        cursor.execute(query)
+        try:
+            cursor.execute(query)
+        except Error as err:
+            logging.debug("\n\nSomething went wrong: {}\n\n".format(err))
+            return -1
+        else:
+            cursor.execute("SELECT LAST_INSERT_ID();")
+            insert_id = cursor.fetchone()
+            return insert_id[0]
         cursor.close()
-        return 1
 
     def update_single_value(self, tablename, key, column, value):
         ''' insert single row/values into table.
