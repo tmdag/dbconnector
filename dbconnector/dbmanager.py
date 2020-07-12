@@ -98,6 +98,34 @@ class Connect:
         cursor.close()
         return all_rows
 
+    def get_rows_from_columns_by_foregin_id(self, tablename, foregincolumn, foreginidx, **cols):
+        ''' get rows from foregin ids. For eg get a column by comparing values of different column like shot name where seqID = 3 '''
+        cursor = self.conn.cursor(buffered=True)
+        if not isinstance(cols.get("columns"), str):
+            columns = ','.join(map(str, cols.get("columns"))) 
+        else:
+            columns = cols.get("columns")
+        query = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, columns, foregincolumn, str(foreginidx))
+        
+        try:
+            cursor.execute(query)
+            logging.debug("EXECUTING: " + query)
+            if len(cols.get("columns"))==1 or isinstance(cols.get("columns"), str):
+                all_rows = [i[0] for i in cursor.fetchall()]
+            else:
+ 
+                all_rows =cursor.fetchall()
+            return all_rows
+        except Error as err:
+            logging.debug("\n\nSomething went wrong: {}".format(err))
+            return 0
+        except TypeError as err:
+            logging.debug("No results found".format(err))
+            return 0   
+        else:
+            return 1
+        cursor.close()
+
     def get_row_by_id(self, tablename, idx):
         ''' get row data by by specific columns '''
         cursor = self.conn.cursor(buffered=True)
@@ -176,34 +204,6 @@ class Connect:
             cursor.execute(query2)
             single_row = cursor.fetchone()[0]
             return single_row
-        except Error as err:
-            logging.debug("\n\nSomething went wrong: {}".format(err))
-            return 0
-        except TypeError as err:
-            logging.debug("No results found".format(err))
-            return 0   
-        else:
-            return 1
-        cursor.close()
-
-    def get_rows_from_columns_by_foren_id(self, tablename, forencolumn, forenidx, **cols):
-        ''' get rows from foren ids. For eg get a scolumn by comparing values of different column like shot name where seqID = 3 '''
-        cursor = self.conn.cursor(buffered=True)
-        if not isinstance(cols.get("columns"), str):
-            columns = ','.join(map(str, cols.get("columns"))) 
-        else:
-            columns = cols.get("columns")
-        query = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, columns, forencolumn, str(forenidx))
-        
-        try:
-            cursor.execute(query)
-            logging.debug("EXECUTING: " + query)
-            if len(cols.get("columns"))==1 or isinstance(cols.get("columns"), str):
-                all_rows = [i[0] for i in cursor.fetchall()]
-            else:
- 
-                all_rows =cursor.fetchall()
-            return all_rows
         except Error as err:
             logging.debug("\n\nSomething went wrong: {}".format(err))
             return 0
@@ -379,7 +379,7 @@ class Connect:
         return 1
 
     def remove_by_id(self, tablename, idx):
-        ''' remove row by ID '''
+        ''' removes whole row from column by row ID '''
         cursor = self.conn.cursor(buffered=True)
         query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
         logging.debug("EXECUTING: " + query1)
@@ -465,9 +465,12 @@ class Connect:
 
 
 if __name__ == '__main__':
-    dbconnect = Connect('dbconfig.ini', debug="True")
-    data = dbconnect.get_column_names("hdrs")
-    print(data)
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+    dbconnect = Connect(APP_DIR +'/../dbconfig.ini', debug="True")
+    data = dbconnect.get_rows_from_columns("hdrs", columns=["hdrid"])
+    ids = []
+    ids.extend([x[0] for x in data]) # get second column for each row
+    print(ids)
 
     # dbconnect.save()
     dbconnect.close_connection()
