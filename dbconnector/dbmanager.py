@@ -6,6 +6,7 @@ this dbmanager wraps them around to more pythonic functions.
 import sys
 import os.path
 import logging
+from logging.config import fileConfig
 if sys.version_info[0] < 3:
     from configparser import ConfigParser
 else:
@@ -13,41 +14,76 @@ else:
 from mysql.connector import MySQLConnection, Error, errorcode
 ##=====================================
 
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+LOGGING_CFG_FILE = os.path.join(APP_DIR, "config", "logging_config.ini")
+
 class Connect:
     """ main connect class """
     def __init__(self, cfg='config.ini', debug=True, key=None, value=None):
         """ Connect to MySQL database """
-        logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
-        if not debug:
-            logging.disable(logging.DEBUG)
+        self.init_logging()
+        LOG.debug("log initialized")
+        
 
         db_config = self.read_db_config(cfg)
         self.db_name = db_config.get("database")
-        self.debug = debug
+
         try:
-            # conn = mysql.connector.connect(**db_config)
-            logging.debug('Connecting to MySQL database...')
+            LOG.debug('Connecting to MySQL database...')
             self.conn = MySQLConnection(**db_config)
             if self.conn.is_connected():
-                logging.debug('Connected to MySQL database')
+                LOG.debug('Connected to MySQL database sucessfylly')
         except Error as err:
             if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-                logging.debug("Something is wrong with your user name or password")
+                LOG.debug("Something is wrong with your user name or password")
             elif err.errno == errorcode.ER_BAD_DB_ERROR:
-                logging.debug("Database does not exist")
+                LOG.debug("Database does not exist")
             else:
-                logging.debug("Error: %s", err)
+                LOG.debug("Error: %s", err)
             raise Exception(err)
 
         self.key = None
         self.value = None
 
+    @staticmethod
+    def init_logging(log_file=None, append=False, console_loglevel=logging.DEBUG):
+        """Set up logging to file and console."""
+        # CRITICAL 50
+        # ERROR 40
+        # WARNING 30
+        # INFO 20
+        # DEBUG 10
+        # NOTSET 0
+        if log_file is not None:
+            if append:
+                filemode_val = 'a'
+            else:
+                filemode_val = 'w'
+            logging.basicConfig(level=logging.DEBUG,
+                                format="%(asctime)s %(levelname)s %(threadName)s %(name)s %(message)s",
+                                # datefmt='%m-%d %H:%M',
+                                filename=log_file,
+                                filemode=filemode_val)
+
+        # define a Handler which writes INFO messages or higher to the sys.stderr
+        console = logging.StreamHandler()
+        console.setLevel(console_loglevel)
+        # set a format which is simpler for console use
+        formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+        console.setFormatter(formatter)
+
+        global LOG
+        LOG = logging.getLogger(__name__)
+        if not LOG.hasHandlers():
+            LOG.setLevel(logging.DEBUG)
+            LOG.addHandler(console)
+
     def show_tables(self):
         ''' show tables in current database '''
         cursor = self.conn.cursor(buffered=True)
         query = "SHOW TABLES"
-        logging.debug("EXECUTING: " + query)
+        LOG.debug("EXECUTING: " + query)
         cursor.execute(query)
         tables = cursor.fetchall()
         cursor.close()
@@ -61,7 +97,7 @@ class Connect:
         ''' gets name of primary key in a table '''
         cursor = self.conn.cursor(buffered=True)
         query = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI')".format(tablename)
-        logging.debug("EXECUTING: " + query)
+        LOG.debug("EXECUTING: " + query)
         cursor.execute(query)
         primary_key_name = cursor.fetchone()[0]
         cursor.close()
@@ -71,9 +107,9 @@ class Connect:
         ''' list column names of a given tablename '''
         cursor = self.conn.cursor(buffered=True)
         query = "SELECT column_name FROM information_schema.columns  WHERE table_schema={0!r} AND table_name={1!r} ORDER BY ORDINAL_POSITION".format(self.db_name, tablename)
-        logging.debug("EXECUTING: " + query)
+        LOG.debug("EXECUTING: " + query)
         cursor.execute(query)
-        column_names = list(zip(*cursor.fetchall()))[0]
+        column_names = list(list(zip(*cursor.fetchall()))[0])
         cursor.close()
         return column_names
 
@@ -81,9 +117,20 @@ class Connect:
         ''' get all rows from selected table '''
         cursor = self.conn.cursor(buffered=True)
         query = "SELECT * FROM {0:s}".format(tablename)
-        logging.debug("EXECUTING: " + query)
+        LOG.debug("EXECUTING: " + query)
         cursor.execute(query)
         all_rows = cursor.fetchall()
+        cursor.close()
+        return all_rows
+
+    def get_column(self, tablename, column):
+        ''' get whole column from table '''
+        cursor = self.conn.cursor(buffered=True)
+        query = "SELECT {0:s} FROM {1:s}".format(column, tablename)
+        LOG.debug("EXECUTING: " + query)
+        cursor.execute(query)
+        db_data = cursor.fetchall()
+        all_rows = list(tuple(zip(*db_data))[0])
         cursor.close()
         return all_rows
 
@@ -92,7 +139,28 @@ class Connect:
         cursor = self.conn.cursor(buffered=True)
         columns = cols.get("columns")
         query = "SELECT {1:s} FROM {0:s}".format(tablename, ','.join(map(str, columns)))
-        logging.debug("EXECUTING: " + query)
+        LOG.debug("EXECUTING: " + query)
+        cursor.execute(query)
+        all_rows = cursor.fetchall()
+        cursor.close()
+        return all_rows
+
+    def get_rowss_from_columns_by_key(self, tablename, key, value, **cols):
+        ''' get row data by by specific columns '''
+        cursor = self.conn.cursor(buffered=True)
+        columns = cols.get("columns")
+        query = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3:s}".format(tablename, ','.join(map(str, columns)), key, str(value) )
+        LOG.debug("EXECUTING: " + query)
+        cursor.execute(query)
+        all_rows = cursor.fetchall()
+        cursor.close()
+        return all_rows
+
+    def get_rows_from_columns_by_key(self, tablename, key, value):
+        ''' get row data by by specific columns '''
+        cursor = self.conn.cursor(buffered=True)
+        query = "SELECT * FROM {0:s} WHERE {1:s} = {2:s}".format(tablename, key, str(value))
+        LOG.debug("EXECUTING: " + query)
         cursor.execute(query)
         all_rows = cursor.fetchall()
         cursor.close()
@@ -109,7 +177,7 @@ class Connect:
         
         try:
             cursor.execute(query)
-            logging.debug("EXECUTING: " + query)
+            LOG.debug("EXECUTING: " + query)
             if len(cols.get("columns"))==1 or isinstance(cols.get("columns"), str):
                 all_rows = [i[0] for i in cursor.fetchall()]
             else:
@@ -117,10 +185,10 @@ class Connect:
                 all_rows =cursor.fetchall()
             return all_rows
         except Error as err:
-            logging.debug("\n\nSomething went wrong: {}".format(err))
+            LOG.debug("\n\nSomething went wrong: {}".format(err))
             return 0
         except TypeError as err:
-            logging.debug("No results found".format(err))
+            LOG.debug("No results found".format(err))
             return 0   
         else:
             return 1
@@ -130,11 +198,11 @@ class Connect:
         ''' get row data by by specific columns '''
         cursor = self.conn.cursor(buffered=True)
         query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
-        logging.debug("EXECUTING: " + query1)
+        LOG.debug("EXECUTING: " + query1)
         cursor.execute(query1)
         columnID = cursor.fetchone()[0]
         query2 = "SELECT * FROM {0:s} WHERE {1:s} = {2!r};".format(tablename, columnID, str(idx))
-        logging.debug("EXECUTING: " + query2)
+        LOG.debug("EXECUTING: " + query2)
         cursor.execute(query2)
         single_row = cursor.fetchone()
 
@@ -145,13 +213,13 @@ class Connect:
         ''' check whenever value exists in specified table under specified column '''
         cursor = self.conn.cursor(buffered=True)
         query = "SELECT @id:={3:s} AS id FROM {0:s} WHERE {1:s} = {2!r}".format(tablename, column, value, self.get_primary_key(tablename))
-        logging.debug("EXECUTING: " + query)
+        LOG.debug("EXECUTING: " + query)
         try:
             cursor.execute(query)
             get_query = cursor.fetchone()
             value_id = get_query[0] if get_query != None else None
         except Error as err:
-            logging.debug("\n\nSomething went wrong: {}".format(err))
+            LOG.debug("\n\nSomething went wrong: {}".format(err))
             return 0
         else:
             return value_id
@@ -171,14 +239,14 @@ class Connect:
         for i, (key, value) in enumerate(keys):
             query += " {0:s} = {1!r} ".format(key, value)
             query += "AND" if i<elements-1 else ""
-        logging.debug("EXECUTING: " + query)
+        LOG.debug("EXECUTING: " + query)
 
         try:
             cursor.execute(query)
             get_query = cursor.fetchone()
             value_id = get_query[0] if get_query != None else None
         except Error as err:
-            logging.debug("\n\nSomething went wrong: {}".format(err))
+            LOG.debug("\n\nSomething went wrong: {}".format(err))
             return -1
         else:
             return value_id
@@ -188,27 +256,27 @@ class Connect:
         ''' get row data by by checking its MAIN key '''
         cursor = self.conn.cursor(buffered=True)
         query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
-        logging.debug("EXECUTING: " + query1)
+        LOG.debug("EXECUTING: " + query1)
 
         try:
             cursor.execute(query1)
             columnID = cursor.fetchone()[0]
         except Error as err:
-            logging.debug("\n\nSomething went wrong: {}".format(err))
+            LOG.debug("\n\nSomething went wrong: {}".format(err))
             return 0
 
         query2 = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, column, columnID, str(idx))
-        logging.debug("EXECUTING: " + query2)
+        LOG.debug("EXECUTING: " + query2)
 
         try:
             cursor.execute(query2)
             single_row = cursor.fetchone()[0]
             return single_row
         except Error as err:
-            logging.debug("\n\nSomething went wrong: {}".format(err))
+            LOG.debug("\n\nSomething went wrong: {}".format(err))
             return 0
         except TypeError as err:
-            logging.debug("No results found".format(err))
+            LOG.debug("No results found".format(err))
             return 0   
         else:
             return 1
@@ -218,7 +286,7 @@ class Connect:
         ''' check whenever value exists in specified table under specified column '''
         cursor = self.conn.cursor(buffered=True)
         query = "SELECT {1:s}, COUNT(*) FROM {0:s} WHERE {1:s} = {2!r} GROUP BY {1:s}".format(tablename, column, value)
-        logging.debug("EXECUTING: " + query)
+        LOG.debug("EXECUTING: " + query)
         cursor.execute(query)
         number_of_rows_found = cursor.rowcount
         cursor.close()
@@ -240,16 +308,16 @@ class Connect:
                 query += "AND" if i<elements-1 else ""
         query += "GROUP BY {0:s}".format(columns[0])
 
-        logging.debug("EXECUTING: " + query)
+        LOG.debug("EXECUTING: " + query)
         try:
             cursor.execute(query)
             number_of_rows_found = cursor.rowcount
             return number_of_rows_found
         except Error as err:
-            logging.debug("\n\nSomething went wrong: {}".format(err))
+            LOG.debug("\n\nSomething went wrong: {}".format(err))
             return 0
         except TypeError as err:
-            logging.debug("No results found".format(err))
+            LOG.debug("No results found".format(err))
             return 0
 
         cursor.close()
@@ -261,11 +329,11 @@ class Connect:
         columns = colvals.get("columns")
         values = tuple(colvals.get("values"))
         query = "INSERT INTO {} ({}) VALUES ({})".format(tablename, ', '.join(columns), ','.join(['%s']*len(values)))
-        logging.debug("EXECUTING: " + query%values)
+        LOG.debug("EXECUTING: " + query%values)
         try:
             cursor.execute(query, values)
         except Error as err:
-            logging.debug("\n\nSomething went wrong: {}\n\n".format(err))
+            LOG.debug("\n\nSomething went wrong: {}\n\n".format(err))
             return -1
         else:
             cursor.execute("SELECT LAST_INSERT_ID();")
@@ -283,11 +351,11 @@ class Connect:
         cursor = self.conn.cursor(buffered=True)
         columns = dbdata.keys()
         query = "INSERT INTO {} ({}) VALUES ({})".format(tablename, ', '.join(columns), ','.join(['%({})'.format(colname) for colname in columns]))
-        logging.debug("EXECUTING: " + query)
+        LOG.debug("EXECUTING: " + query)
         try:
             cursor.execute(query, dbdata)
         except Error as err:
-            logging.debug("\n\nSomething went wrong: {}\n\n".format(err))
+            LOG.debug("\n\nSomething went wrong: {}\n\n".format(err))
             return -1
         else:
             cursor.execute("SELECT LAST_INSERT_ID();")
@@ -310,32 +378,33 @@ class Connect:
             single_column = columns
             single_value = values
             query = "UPDATE {0:s} SET {1:s} = {2!r} WHERE {3:s} = {4:s}".format(tablename, single_column, single_value, primary_key_column, str(key))
-            logging.debug("EXECUTING: " + query)
+            LOG.debug("EXECUTING: " + query)
             try:
                 cursor.execute(query)
             except Error as err:
-                logging.debug("\n\nSomething went wrong: {}".format(err))
+                LOG.debug("\n\nSomething went wrong: {}".format(err))
                 return 0
             else:
                 return 1
         else:
+            LOG.debug("We have multiple columns to update: %s"%len(columns))
             if len(columns)!=len(values):
-                logging.debug("\n\nNumber of columns and values missmatch")
+                LOG.debug("\n\nNumber of columns and values missmatch")
                 return 0
                 raise ValueError('Number of columns and values missmatch')
 
             for idx, value in enumerate(columns):
+                LOG.debug("Updating column #%s with value: %s"%(idx, value))
                 single_column = value
                 single_value = values[idx]
                 query = "UPDATE {0:s} SET {1:s} = {2!r} WHERE {3:s} = {4:s}".format(tablename, single_column, single_value, primary_key_column, str(key))
-                logging.debug("EXECUTING: " + query)
+                LOG.debug("EXECUTING: " + query)
                 try:
                     cursor.execute(query)
                 except Error as err:
-                    logging.debug("\n\nSomething went wrong: {}".format(err))
+                    LOG.debug("\n\nSomething went wrong: {}".format(err))
                     return 0
-                else:
-                    return 1
+            return 1
 
         cursor.close()
 
@@ -343,11 +412,11 @@ class Connect:
         ''' insert single values into table '''
         cursor = self.conn.cursor(buffered=True)
         query = "INSERT INTO {0:s} ({1:s}) VALUES({2!r})".format(tablename, column, values)
-        logging.debug("EXECUTING: " + query)
+        LOG.debug("EXECUTING: " + query)
         try:
             cursor.execute(query)
         except Error as err:
-            logging.debug("\n\nSomething went wrong: {}\n\n".format(err))
+            LOG.debug("\n\nSomething went wrong: {}\n\n".format(err))
             return -1
         else:
             cursor.execute("SELECT LAST_INSERT_ID();")
@@ -363,7 +432,7 @@ class Connect:
         primary_key_column = self.get_primary_key(tablename)
 
         query = "UPDATE {0:s} SET {1:s} = {2!r} WHERE {3:s} = {4:s}".format(tablename, column, value, primary_key_column, str(key))
-        logging.debug("EXECUTING: " + query)
+        LOG.debug("EXECUTING: " + query)
         cursor.execute(query)
         cursor.close()
         return 1
@@ -373,7 +442,7 @@ class Connect:
 
         cursor = self.conn.cursor(buffered=True)
         query = "DELETE FROM {0:s} WHERE {1:s} = {2!r}".format(tablename, column, values)
-        logging.debug("EXECUTING: " + query)
+        LOG.debug("EXECUTING: " + query)
         cursor.execute(query)
         cursor.close()
         return 1
@@ -382,26 +451,26 @@ class Connect:
         ''' removes whole row from column by row ID '''
         cursor = self.conn.cursor(buffered=True)
         query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
-        logging.debug("EXECUTING: " + query1)
+        LOG.debug("EXECUTING: " + query1)
 
         try:
             cursor.execute(query1)
             columnID = cursor.fetchone()[0]
         except Error as err:
-            logging.debug("\n\nSomething went wrong: {}".format(err))
+            LOG.debug("\n\nSomething went wrong: {}".format(err))
             return 0
 
         query2 = "DELETE FROM {0:s} WHERE {1:s} = {2!r}".format(tablename, columnID, str(idx))
-        logging.debug("EXECUTING: " + query2)
+        LOG.debug("EXECUTING: " + query2)
 
         try:
             cursor.execute(query2)
             return 1
         except Error as err:
-            logging.debug("\n\nSomething went wrong: {}".format(err))
+            LOG.debug("\n\nSomething went wrong: {}".format(err))
             return 0
         except TypeError as err:
-            logging.debug("No results found".format(err))
+            LOG.debug("No results found".format(err))
             return 0   
 
         cursor.close()
@@ -410,16 +479,21 @@ class Connect:
         ''' allows to execture raw call to DB '''
         cursor = self.conn.cursor(buffered=True)
         query = call
-        logging.debug("EXECUTING: " + query)
-        cursor.execute(query)
-        get_query = cursor.fetchall()
+        LOG.debug("EXECUTING: " + query)
+        try:
+            cursor.execute(query)
+            get_query = cursor.fetchall()
+            return get_query   
+        except Error as err:
+            LOG.debug("\n\nSomething went wrong: {}".format(err))
+            return 0
         cursor.close()
-        return get_query   
+
 
     def save(self):
         ''' commit to database '''
         self.conn.commit()
-        logging.debug('Changes Saved to DB')
+        LOG.debug('Changes Saved to DB')
 
     def as_dict(self):
         pass
@@ -460,17 +534,21 @@ class Connect:
     def close_connection(self):
         ''' close connection to database '''
         self.conn.close()
-        logging.debug('Connection closed.')
+        LOG.debug('Connection closed.------------------------------------------------------------------')
         logging.shutdown()
 
 
 if __name__ == '__main__':
-    APP_DIR = os.path.dirname(os.path.abspath(__file__))
-    dbconnect = Connect(APP_DIR +'/../dbconfig.ini', debug="True")
-    data = dbconnect.get_rows_from_columns("hdrs", columns=["hdrid"])
-    ids = []
-    ids.extend([x[0] for x in data]) # get second column for each row
-    print(ids)
 
+    dbconnect = Connect(APP_DIR +'/../dbconfig.ini', debug="True")
+    # data = dbconnect.get_rows_from_columns("hdrs", columns=["hdrid"])
+    # ids = []
+    # ids.extend([x[0] for x in data]) # get second column for each row
+    # print(ids)
+    out = dbconnect.get_rows_from_columns_by_key("renders", "users_userID", "6")
+    # out = dbconnect.get_rows_from_columns_by_key("hdrs", "hdrID", "52")
+    # out = dbconnect.get_column("hdrs", "hdrID")
+ 
+    print(out)
     # dbconnect.save()
     dbconnect.close_connection()
