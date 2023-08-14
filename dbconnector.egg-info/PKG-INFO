@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: dbconnector
+Version: 0.15
+Summary: helper modules for MySQL DB connector
+Home-page: http://github.com/tmdag/dbconnector
+Author: Albert Szostkiewicz
+Author-email: tmdag@tmdag.com
+License: MIT

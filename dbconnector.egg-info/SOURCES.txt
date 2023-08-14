@@ -1,0 +1,10 @@
+README.md
+setup.py
+dbconnector/__init__.py
+dbconnector/dbmanager.py
+dbconnector.egg-info/PKG-INFO
+dbconnector.egg-info/SOURCES.txt
+dbconnector.egg-info/dependency_links.txt
+dbconnector.egg-info/not-zip-safe
+dbconnector.egg-info/requires.txt
+dbconnector.egg-info/top_level.txt
