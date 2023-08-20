@@ -21,7 +21,14 @@ LOGGING_CFG_FILE = os.path.join(APP_DIR, "config", "logging_config.ini")
 class Connect:
     """ main connect class """
     def __init__(self, cfg='config.ini', debug=False, key=None, value=None):
-        """ Connect to MySQL database """
+        """
+        Initializes the database connection manager.
+
+        :param cfg: Path to the configuration file, default is 'config.ini'.
+        :param debug: Enables or disables debug mode, default is False.
+        :param key: Optional key parameter.
+        :param value: Optional value parameter.
+        """
         self.debug = debug
         self.cfgfile = cfg
         db_config = self.read_db_config(self.cfgfile)
@@ -31,16 +38,34 @@ class Connect:
         self.conn = None
 
     def __enter__(self):
+        """
+        Enters the context of the database connection manager.
+
+        :return: The connection object itself.
+        """
         self.connect_to_db()
         return self  # Return the Connect object itself
 
 
     def __exit__(self, exc_type, exc_value, traceback):
+        """
+        Exits the context of the database connection manager, closing the connection if needed.
+
+        :param exc_type: Exception type.
+        :param exc_value: Exception value.
+        :param traceback: Exception traceback.
+        """
         if self.conn:
             self.close_connection()
         logging.shutdown()
 
     def connect_to_db(self):
+        """
+        Connects to the MySQL database using the configuration file specified in the initialization.
+        Initializes logging and handles common connection errors.
+
+        :raises Exception: If there is an error connecting to the database.
+        """
         self.init_logging()
         LOG.debug("log initialized")
         db_config = self.read_db_config(self.cfgfile)
@@ -61,6 +86,11 @@ class Connect:
 
     @contextmanager
     def cursor(self):
+        """
+        Provides a cursor to interact with the MySQL database. The cursor is buffered.
+
+        :yield: Buffered cursor.
+        """
         cur = self.conn.cursor(buffered=True)
         try:
             yield cur
@@ -68,40 +98,73 @@ class Connect:
             cur.close()
 
     @staticmethod
-    def init_logging(log_file=None, append=False, console_loglevel=logging.CRITICAL):
-        """Set up logging to file and console."""
-        # CRITICAL 50
-        # ERROR 40
-        # WARNING 30
-        # INFO 20
-        # DEBUG 10
-        # NOTSET 0
-        if log_file is not None:
-            if append:
-                filemode_val = 'a'
-            else:
-                filemode_val = 'w'
-            logging.basicConfig(level=logging.DEBUG,
-                                format="%(asctime)s %(levelname)s %(threadName)s %(name)s %(message)s",
-                                # datefmt='%m-%d %H:%M',
-                                filename=log_file,
-                                filemode=filemode_val)
+    def init_logging(log_file=None, append=False, console_loglevel=logging.CRITICAL, enable_console_logging=True):
+        """
+        Initializes the logging system for the database connection manager.
+        Configures the log level and format based on the debug setting.
 
-        # define a Handler which writes INFO messages or higher to the sys.stderr
-        console = logging.StreamHandler()
-        console.setLevel(console_loglevel)
-        # set a format which is simpler for console use
-        formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
-        console.setFormatter(formatter)
+        :param log_file: The path to the log file. If None, logging to a file is disabled.
+        :param append: If True, append to the log file; otherwise, overwrite it.
+        :param console_loglevel: The log level for console logging.
+        :param enable_console_logging: If True, enable logging to the console.
+        :return: None
+        """
+        logger = logging.getLogger(__name__)
+        logger.setLevel(logging.DEBUG)
+
+        if log_file is not None:
+            filemode_val = 'a' if append else 'w'
+            file_handler = logging.FileHandler(log_file, mode=filemode_val)
+            file_handler.setLevel(logging.DEBUG)
+            file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(threadName)s %(name)s %(message)s"))
+            logger.addHandler(file_handler)
+
+        if enable_console_logging:
+            console = logging.StreamHandler()
+            console.setLevel(console_loglevel)
+            console.setFormatter(logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s'))
+            logger.addHandler(console)
 
         global LOG
-        LOG = logging.getLogger(__name__)
-        if not LOG.hasHandlers():
-            LOG.setLevel(logging.DEBUG)
-            LOG.addHandler(console)
+        LOG = logger
+
+
+    def raw_call(self, call):
+        """
+        Allows execution of a raw SQL call to the connected MySQL database.
+
+        :param call: The raw SQL query string to execute.
+        :return: The result of the query as a list of rows, or 0 if an error occurs.
+        :raises Error: If there is an error in executing the query.
+        """
+        with self.cursor() as cursor:
+            query = call
+            LOG.debug("EXECUTING: %s", query)
+            try:
+                cursor.execute(query)
+                get_query = cursor.fetchall()
+                return get_query
+            except Error as err:
+                LOG.debug("\n\nSomething went wrong: %s", err)
+                return 0
+
+    def save(self):
+        """
+        Commits changes to the connected MySQL database.
+
+        :return: None, as the method commits the changes to the database and logs a success message.
+        """
+        self.conn.commit()
+        LOG.debug('Changes Saved to DB')
+
 
     def show_tables(self):
-        ''' show tables in current database '''
+        """
+        Retrieves the names of all the tables in the connected MySQL database and stores them as a tuple in the instance variable 'value'.
+
+        :return: The instance of the class itself, with the 'key' attribute set to the database name and the 'value' attribute set to the tuple of table names.
+        :raises Exception: If there is an error in retrieving table names.
+        """
         with self.cursor() as cursor:
             query = "SHOW TABLES"
             LOG.debug("EXECUTING: %s", query)
@@ -112,7 +175,13 @@ class Connect:
         return self
 
     def get_primary_key(self, tablename):
-        ''' gets name of primary key in a table '''
+        """
+        Retrieves the primary key column name for the specified table in the connected MySQL database.
+
+        :param table_name: The name of the table for which to retrieve the primary key.
+        :return: The name of the primary key column.
+        :raises Exception: If there is an error in retrieving the primary key.
+        """
         with self.cursor() as cursor:
             query = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI')".format(tablename)
             LOG.debug("EXECUTING: %s", query)
@@ -121,7 +190,13 @@ class Connect:
         return primary_key_name
 
     def get_column_names(self, tablename):
-        ''' list column names of a given tablename '''
+        """
+        Retrieves the names of all columns for the specified table in the connected MySQL database.
+
+        :param table_name: The name of the table for which to retrieve the column names.
+        :return: A list of column names.
+        :raises Exception: If there is an error in retrieving the column names.
+        """
         with self.cursor() as cursor:
             query = "SELECT column_name FROM information_schema.columns  WHERE table_schema={0!r} AND table_name={1!r} ORDER BY ORDINAL_POSITION".format(self.db_name, tablename)
             LOG.debug("EXECUTING: %s", query)
@@ -130,7 +205,13 @@ class Connect:
         return column_names
 
     def get_all_rows(self, tablename):
-        ''' get all rows from selected table '''
+        """
+        Retrieves all rows from the specified table in the connected MySQL database.
+
+        :param table_name: The name of the table from which to retrieve the rows.
+        :return: A list of rows, where each row is represented as a tuple.
+        :raises Exception: If there is an error in retrieving the rows.
+        """
         with self.cursor() as cursor:
             query = "SELECT * FROM {0:s}".format(tablename)
             LOG.debug("EXECUTING: %s", query)
@@ -139,7 +220,14 @@ class Connect:
         return all_rows
 
     def get_column(self, tablename, column):
-        ''' get whole column from table '''
+        """
+        Retrieves the values of a specific column from the specified table in the connected MySQL database.
+
+        :param table_name: The name of the table from which to retrieve the column.
+        :param column_name: The name of the column to retrieve.
+        :return: A list of values representing the specified column.
+        :raises Exception: If there is an error in retrieving the column.
+        """
         with self.cursor() as cursor:
             query = "SELECT {0:s} FROM {1:s}".format(column, tablename)
             LOG.debug("EXECUTING: %s", query)
@@ -149,7 +237,13 @@ class Connect:
         return all_rows
 
     def get_rows_from_columns(self, tablename, **cols):
-        ''' get row data by by specific columns '''
+        """
+        Retrieves specific columns from all rows of the specified table in the connected MySQL database.
+
+        :param tablename: The name of the table from which to retrieve the rows.
+        :param cols: Keyword argument containing the "columns" key with a list of column names to retrieve.
+        :return: A list of rows, where each row is represented as a tuple containing the specified columns.
+        """
         with self.cursor() as cursor:
             columns = cols.get("columns")
             query = "SELECT {1:s} FROM {0:s}".format(tablename, ','.join(map(str, columns)))
@@ -159,7 +253,15 @@ class Connect:
         return all_rows
 
     def get_rowss_from_columns_by_key(self, tablename, key, value, **cols):
-        ''' get row data by by specific columns '''
+        """
+        Retrieves specific columns from the rows of the specified table in the connected MySQL database, filtered by a key-value pair.
+
+        :param tablename: The name of the table from which to retrieve the rows.
+        :param key: The column name used as a key to filter the rows.
+        :param value: The value corresponding to the key used to filter the rows.
+        :param cols: Keyword argument containing the "columns" key with a list of column names to retrieve.
+        :return: A list of rows, where each row is represented as a tuple containing the specified columns and matching the key-value pair.
+        """
         with self.cursor() as cursor:
             columns = cols.get("columns")
             query = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3:s}".format(tablename, ','.join(map(str, columns)), key, str(value))
@@ -169,7 +271,14 @@ class Connect:
         return all_rows
 
     def get_rows_from_columns_by_key(self, tablename, key, value):
-        ''' get row data by by specific columns '''
+        """
+        Retrieves all columns from the rows of the specified table in the connected MySQL database, filtered by a key-value pair.
+
+        :param tablename: The name of the table from which to retrieve the rows.
+        :param key: The column name used as a key to filter the rows.
+        :param value: The value corresponding to the key used to filter the rows.
+        :return: A list of rows, where each row is represented as a tuple containing all columns and matching the key-value pair.
+        """
         with self.cursor() as cursor:
             query = "SELECT * FROM {0:s} WHERE {1:s} = {2:s}".format(tablename, key, str(value))
             LOG.debug("EXECUTING: %s", query)
@@ -178,7 +287,17 @@ class Connect:
         return all_rows
 
     def get_rows_from_columns_by_foregin_id(self, tablename, foregincolumn, foreginidx, **cols):
-        ''' get rows from foregin ids. For eg get a column by comparing values of different column like shot name where seqID = 3 '''
+        """
+        Retrieves specific columns from the rows of the specified table in the connected MySQL database, filtered by a foreign key index.
+
+        :param tablename: The name of the table from which to retrieve the rows.
+        :param foregincolumn: The name of the foreign key column used for filtering.
+        :param foreginidx: The foreign key index value used for filtering.
+        :param cols: Keyword argument containing the "columns" key with a list or string representing the column names to retrieve.
+        :return: A list of rows matching the foreign key filter, or 0 if an error occurs, or 1 if no TypeError occurs.
+        :raises Error: If there is an error in executing the query.
+        :raises TypeError: If no results are found.
+        """
         with self.cursor() as cursor:
             if not isinstance(cols.get("columns"), str):
                 columns = ','.join(map(str, cols.get("columns")))
@@ -205,7 +324,13 @@ class Connect:
                 return 1
 
     def get_row_by_id(self, tablename, idx):
-        ''' get row data by by specific columns '''
+        """
+        Retrieves a single row from the specified table in the connected MySQL database, filtered by a specific index.
+
+        :param tablename: The name of the table from which to retrieve the row.
+        :param idx: The index value used to identify the specific row.
+        :return: A tuple representing the single row matching the index, or None if not found.
+        """
         with self.cursor() as cursor:
             query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
             LOG.debug("EXECUTING: %s", query1)
@@ -218,7 +343,15 @@ class Connect:
         return single_row
 
     def get_value_id(self, tablename, column, value):
-        ''' check whenever value exists in specified table under specified column '''
+        """
+        Checks whether a specific value exists in the specified table and column in the connected MySQL database and retrieves the corresponding ID.
+
+        :param tablename: The name of the table in which to check for the value.
+        :param column: The name of the column in which to check for the value.
+        :param value: The value to search for in the specified table and column.
+        :return: The ID corresponding to the value if found, None if not found, or 0 if an error occurs.
+        :raises Error: If there is an error in executing the query.
+        """
         with self.cursor() as cursor:
             query = "SELECT @id:={3:s} AS id FROM {0:s} WHERE {1:s} = {2!r}".format(tablename, column, value, self.get_primary_key(tablename))
             LOG.debug("EXECUTING: %s", query)
@@ -233,7 +366,14 @@ class Connect:
                 return value_id
 
     def get_value_id_multiple(self, tablename, **colvals):
-        ''' gets value id by multiple entries comparison '''
+        """
+        Retrieves the value ID by comparing multiple entries in the specified table in the connected MySQL database.
+
+        :param tablename: The name of the table in which to check for the values.
+        :param colvals: Keyword argument containing the "columns" key with a list of column names and the "values" key with a corresponding list of values.
+        :return: The ID corresponding to the matched columns and values if found, None if not found, or -1 if an error occurs.
+        :raises Error: If there is an error in executing the query.
+        """
         with self.cursor() as cursor:
             columns = colvals.get("columns")
             values = colvals.get("values")
@@ -258,7 +398,16 @@ class Connect:
                 return value_id
 
     def get_value_by_id(self, tablename, column, idx):
-        ''' get row data by by checking its MAIN key '''
+        """
+        Retrieves a specific value from the specified table and column in the connected MySQL database, filtered by the primary key index.
+
+        :param tablename: The name of the table from which to retrieve the value.
+        :param column: The name of the column from which to retrieve the value.
+        :param idx: The primary key index value used to identify the specific row.
+        :return: The value corresponding to the specified column and index, or 0 if an error occurs, or 1 if no TypeError occurs.
+        :raises Error: If there is an error in executing the query.
+        :raises TypeError: If no results are found.
+        """
         with self.cursor() as cursor:
             query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
             LOG.debug("EXECUTING: %s", query1)
@@ -288,7 +437,14 @@ class Connect:
 
 
     def value_exists(self, tablename, column, value):
-        ''' check whenever value exists in specified table under specified column '''
+        """
+        Checks whether a specific value exists in the specified table and column in the connected MySQL database.
+
+        :param tablename: The name of the table in which to check for the value.
+        :param column: The name of the column in which to check for the value.
+        :param value: The value to search for in the specified table and column.
+        :return: The number of rows found with the specified value in the specified table and column.
+        """
         with self.cursor() as cursor:
             query = "SELECT {1:s}, COUNT(*) FROM {0:s} WHERE {1:s} = {2!r} GROUP BY {1:s}".format(tablename, column, value)
             LOG.debug("EXECUTING: %s", query)
@@ -297,7 +453,15 @@ class Connect:
         return number_of_rows_found
 
     def value_exists_multiple(self, tablename, **colvals):
-        ''' check whenever value exists in specified table under specified column '''
+        """
+        Checks whether specific values exist in the specified table and columns in the connected MySQL database.
+
+        :param tablename: The name of the table in which to check for the values.
+        :param colvals: Keyword argument containing the "columns" key with a list of column names and the "values" key with a corresponding list of values.
+        :return: The number of rows found with the specified values in the specified table and columns, or 0 if an error occurs or no results are found.
+        :raises Error: If there is an error in executing the query.
+        :raises TypeError: If no results are found.
+        """
         with self.cursor() as cursor:
 
             columns = colvals.get("columns")
@@ -327,8 +491,14 @@ class Connect:
 
 
     def insert_single_row(self, tablename,**colvals):
-        ''' insert single row/values into table.
-        requires 'columns' and 'values' as an argument '''
+        """
+        Inserts a single row into the specified table in the connected MySQL database.
+
+        :param tablename: The name of the table into which to insert the row.
+        :param colvals: Keyword argument containing the "columns" key with a list of column names and the "values" key with a corresponding tuple of values.
+        :return: The ID of the inserted row, or -1 if an error occurs.
+        :raises Error: If there is an error in inserting the row.
+        """
         with self.cursor() as cursor:
             columns = colvals.get("columns")
             values = tuple(colvals.get("values"))
@@ -347,11 +517,14 @@ class Connect:
 
 
     def insert_single_row2(self, tablename, dbdata):
-        ''' insert single row by passing dictionary
-        db_data={
-            "uuid" : '00000',
-            "columnA" : 51}
-        '''
+        """
+        Inserts a single row into the specified table in the connected MySQL database by passing a dictionary of column names and values.
+
+        :param tablename: The name of the table into which to insert the row.
+        :param dbdata: A dictionary containing the column names as keys and the corresponding values to insert.
+        :return: The ID of the inserted row, or -1 if an error occurs.
+        :raises Error: If there is an error in inserting the row.
+        """
         with self.cursor() as cursor:
             columns = dbdata.keys()
             query = "INSERT INTO {} ({}) VALUES ({})".format(tablename, ', '.join(columns), ','.join(['%({})'.format(colname) for colname in columns]))
@@ -369,8 +542,15 @@ class Connect:
 
 
     def update_single_row(self, tablename, key, **colvals):
-        ''' insert single row/values into table.
-        requires 'columns' and 'values' as an argument '''
+        """
+        Updates a single row in the specified table in the connected MySQL database.
+
+        :param tablename: The name of the table in which to update the row.
+        :param key: The primary key value used to identify the specific row to update.
+        :param colvals: Keyword argument containing the "columns" key with a list or string of column names and the "values" key with a corresponding tuple of values.
+        :return: 1 if the update is successful, or 0 if an error occurs or if the number of columns and values mismatch.
+        :raises Error: If there is an error in updating the row.
+        """
         with self.cursor() as cursor:
             primary_key_column = self.get_primary_key(tablename)
             columns = colvals.get("columns")
@@ -409,9 +589,16 @@ class Connect:
                 return 1
 
 
-
     def insert_single_value(self, tablename, column, values):
-        ''' insert single values into table '''
+        """
+        Inserts a single value into the specified table and column in the connected MySQL database.
+
+        :param tablename: The name of the table into which to insert the value.
+        :param column: The name of the column into which to insert the value.
+        :param values: The value to insert into the specified table and column.
+        :return: The ID of the inserted row, or -1 if an error occurs.
+        :raises Error: If there is an error in inserting the value.
+        """
         with self.cursor() as cursor:
             query = "INSERT INTO {0:s} ({1:s}) VALUES({2!r})".format(tablename, column, values)
             LOG.debug("EXECUTING: %s", query)
@@ -427,8 +614,15 @@ class Connect:
 
 
     def update_single_value(self, tablename, key, column, value):
-        ''' insert single row/values into table.
-        requires 'columns' and 'values' as an argument '''
+        """
+        Updates a single value in the specified table, column, and key in the connected MySQL database.
+
+        :param tablename: The name of the table in which to update the value.
+        :param key: The primary key value used to identify the specific row to update.
+        :param column: The name of the column in which to update the value.
+        :param value: The new value to update in the specified table, column, and key.
+        :return: 1, indicating the update is successful.
+        """
         with self.cursor() as cursor:
 
             primary_key_column = self.get_primary_key(tablename)
@@ -440,8 +634,14 @@ class Connect:
         return 1
 
     def remove_by_value(self, tablename, column, values):
-        ''' remove row by matching value. Very dangerous method. Better to use remove by ID '''
+        """
+        Removes a row from the specified table in the connected MySQL database by matching a value in a specific column. This method is considered dangerous; it's better to use remove_by_id.
 
+        :param tablename: The name of the table from which to remove the row.
+        :param column: The name of the column used to identify the specific row to remove.
+        :param values: The value used to match the row to remove.
+        :return: 1, indicating the removal is successful.
+        """
         with self.cursor() as cursor:
             query = "DELETE FROM {0:s} WHERE {1:s} = {2!r}".format(tablename, column, values)
             LOG.debug("EXECUTING: %s", query)
@@ -449,7 +649,15 @@ class Connect:
         return 1
 
     def remove_by_id(self, tablename, idx):
-        ''' removes whole row from column by row ID '''
+        """
+        Removes a whole row from the specified table in the connected MySQL database by matching the primary key ID.
+
+        :param tablename: The name of the table from which to remove the row.
+        :param idx: The primary key ID used to identify the specific row to remove.
+        :return: 1 if the removal is successful, or 0 if an error occurs or no results are found.
+        :raises Error: If there is an error in executing the query.
+        :raises TypeError: If no results are found.
+        """
         with self.cursor() as cursor:
             query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
             LOG.debug("EXECUTING: %s", query1)
@@ -476,26 +684,6 @@ class Connect:
 
 
 
-    def raw_call(self, call):
-        ''' allows to execture raw call to DB '''
-        with self.cursor() as cursor:
-            query = call
-            LOG.debug("EXECUTING: %s", query)
-            try:
-                cursor.execute(query)
-                get_query = cursor.fetchall()
-                return get_query
-            except Error as err:
-                LOG.debug("\n\nSomething went wrong: %s", err)
-                return 0
-
-
-
-    def save(self):
-        ''' commit to database '''
-        self.conn.commit()
-        LOG.debug('Changes Saved to DB')
-
     def as_dict(self):
         pass
 
@@ -511,10 +699,11 @@ class Connect:
 
     @staticmethod
     def read_db_config(cfgfilename, section='mysql'):
-        """ Read database configuration file and return a dictionary object
-        :param filename: name of the configuration file
-        :param section: section of database configuration
-        :return: a dictionary of database parameters
+        """
+        Reads the database configuration from the specified file.
+
+        :param filename: Path to the configuration file.
+        :return: Dictionary containing the database configuration.
         """
         # create parser and read ini configuration file
         parser = ConfigParser()
