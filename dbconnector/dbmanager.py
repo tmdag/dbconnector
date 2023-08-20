@@ -14,6 +14,7 @@ else:
     from configparser import ConfigParser
 ##=====================================
 
+
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGGING_CFG_FILE = os.path.join(APP_DIR, "config", "logging_config.ini")
 
@@ -67,7 +68,7 @@ class Connect:
             cur.close()
 
     @staticmethod
-    def init_logging(log_file=None, append=False, console_loglevel=logging.DEBUG):
+    def init_logging(log_file=None, append=False, console_loglevel=logging.CRITICAL):
         """Set up logging to file and console."""
         # CRITICAL 50
         # ERROR 40
