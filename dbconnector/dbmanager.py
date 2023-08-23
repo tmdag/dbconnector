@@ -7,11 +7,9 @@ import sys
 import os.path
 import logging
 from contextlib import contextmanager
+from typing import List, Tuple, Any, Union
 from mysql.connector import MySQLConnection, Error, errorcode
-if sys.version_info[0] < 3:
-    from configparser import ConfigParser
-else:
-    from configparser import ConfigParser
+from configparser import ConfigParser
 ##=====================================
 
 
@@ -45,7 +43,6 @@ class Connect:
         """
         self.connect_to_db()
         return self  # Return the Connect object itself
-
 
     def __exit__(self, exc_type, exc_value, traceback):
         """
@@ -129,7 +126,7 @@ class Connect:
         LOG = logger
 
 
-    def raw_call(self, call):
+    def raw_call(self, call: str) -> Union[List, int]:
         """
         Allows execution of a raw SQL call to the connected MySQL database.
 
@@ -158,57 +155,55 @@ class Connect:
         LOG.debug('Changes Saved to DB')
 
 
-    def show_tables(self):
+    def show_tables(self) -> List[str]:
         """
-        Retrieves the names of all the tables in the connected MySQL database and stores them as a tuple in the instance variable 'value'.
+        Retrieves the names of all the tables in the connected MySQL database.
 
-        :return: The instance of the class itself, with the 'key' attribute set to the database name and the 'value' attribute set to the tuple of table names.
+        :return: A list of table names in the connected database.
         :raises Exception: If there is an error in retrieving table names.
         """
         with self.cursor() as cursor:
-            query = "SHOW TABLES"
+            query: str = "SHOW TABLES"
             LOG.debug("EXECUTING: %s", query)
             cursor.execute(query)
-            tables = cursor.fetchall()
-        self.key = self.db_name
-        self.value = tuple(zip(*tables))[0]
-        return self
+            tables: List[str] = list(list(zip(*cursor.fetchall()))[0])
+        return tables
 
-    def get_primary_key(self, tablename):
+    def get_primary_key(self, tablename: str) -> str:
         """
         Retrieves the primary key column name for the specified table in the connected MySQL database.
 
-        :param table_name: The name of the table for which to retrieve the primary key.
+        :param tablename: The name of the table for which to retrieve the primary key.
         :return: The name of the primary key column.
         :raises Exception: If there is an error in retrieving the primary key.
         """
         with self.cursor() as cursor:
-            query = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI')".format(tablename)
+            query = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = %s) AND (`COLUMN_KEY` = 'PRI')"
             LOG.debug("EXECUTING: %s", query)
-            cursor.execute(query)
+            cursor.execute(query, (tablename,))
             primary_key_name = cursor.fetchone()[0]
         return primary_key_name
 
-    def get_column_names(self, tablename):
+    def get_column_names(self, tablename: str) -> List[str]:
         """
         Retrieves the names of all columns for the specified table in the connected MySQL database.
 
-        :param table_name: The name of the table for which to retrieve the column names.
+        :param tablename: The name of the table for which to retrieve the column names.
         :return: A list of column names.
         :raises Exception: If there is an error in retrieving the column names.
         """
         with self.cursor() as cursor:
-            query = "SELECT column_name FROM information_schema.columns  WHERE table_schema={0!r} AND table_name={1!r} ORDER BY ORDINAL_POSITION".format(self.db_name, tablename)
+            query = "SELECT column_name FROM information_schema.columns WHERE table_schema=%s AND table_name=%s ORDER BY ORDINAL_POSITION"
             LOG.debug("EXECUTING: %s", query)
-            cursor.execute(query)
+            cursor.execute(query, (self.db_name, tablename))
             column_names = list(list(zip(*cursor.fetchall()))[0])
         return column_names
 
-    def get_all_rows(self, tablename):
+    def get_all_rows(self, tablename: str) -> List[Tuple]:
         """
         Retrieves all rows from the specified table in the connected MySQL database.
 
-        :param table_name: The name of the table from which to retrieve the rows.
+        :param tablename: The name of the table from which to retrieve the rows.
         :return: A list of rows, where each row is represented as a tuple.
         :raises Exception: If there is an error in retrieving the rows.
         """
@@ -219,24 +214,24 @@ class Connect:
             all_rows = cursor.fetchall()
         return all_rows
 
-    def get_column(self, tablename, column):
+    def get_column(self, tablename: str, column: str) -> List[Any]:
         """
         Retrieves the values of a specific column from the specified table in the connected MySQL database.
 
-        :param table_name: The name of the table from which to retrieve the column.
-        :param column_name: The name of the column to retrieve.
+        :param tablename: The name of the table from which to retrieve the column.
+        :param column: The name of the column to retrieve.
         :return: A list of values representing the specified column.
         :raises Exception: If there is an error in retrieving the column.
         """
         with self.cursor() as cursor:
-            query = "SELECT {0:s} FROM {1:s}".format(column, tablename)
+            query = f"SELECT `{column}` FROM `{tablename}`"
             LOG.debug("EXECUTING: %s", query)
             cursor.execute(query)
             db_data = cursor.fetchall()
             all_rows = list(tuple(zip(*db_data))[0])
         return all_rows
 
-    def get_rows_from_columns(self, tablename, **cols):
+    def get_rows_from_columns(self, tablename: str, **cols) -> List[Tuple]:
         """
         Retrieves specific columns from all rows of the specified table in the connected MySQL database.
 
@@ -245,14 +240,14 @@ class Connect:
         :return: A list of rows, where each row is represented as a tuple containing the specified columns.
         """
         with self.cursor() as cursor:
-            columns = cols.get("columns")
-            query = "SELECT {1:s} FROM {0:s}".format(tablename, ','.join(map(str, columns)))
+            columns = ', '.join([f"`{col}`" for col in cols.get("columns", [])])
+            query = f"SELECT {columns} FROM `{tablename}`"
             LOG.debug("EXECUTING: %s", query)
             cursor.execute(query)
             all_rows = cursor.fetchall()
         return all_rows
 
-    def get_rowss_from_columns_by_key(self, tablename, key, value, **cols):
+    def get_rowss_from_columns_by_key(self, tablename: str, key: str, value: Any, **cols) -> List[Tuple]:
         """
         Retrieves specific columns from the rows of the specified table in the connected MySQL database, filtered by a key-value pair.
 
@@ -263,14 +258,14 @@ class Connect:
         :return: A list of rows, where each row is represented as a tuple containing the specified columns and matching the key-value pair.
         """
         with self.cursor() as cursor:
-            columns = cols.get("columns")
-            query = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3:s}".format(tablename, ','.join(map(str, columns)), key, str(value))
+            columns = ', '.join([f"`{col}`" for col in cols.get("columns", [])])
+            query = f"SELECT {columns} FROM `{tablename}` WHERE `{key}` = %s"
             LOG.debug("EXECUTING: %s", query)
-            cursor.execute(query)
+            cursor.execute(query, (value,))
             all_rows = cursor.fetchall()
         return all_rows
 
-    def get_rows_from_columns_by_key(self, tablename, key, value):
+    def get_rows_from_columns_by_key(self, tablename: str, key: str, value: Any) -> List[Tuple]:
         """
         Retrieves all columns from the rows of the specified table in the connected MySQL database, filtered by a key-value pair.
 
@@ -280,21 +275,21 @@ class Connect:
         :return: A list of rows, where each row is represented as a tuple containing all columns and matching the key-value pair.
         """
         with self.cursor() as cursor:
-            query = "SELECT * FROM {0:s} WHERE {1:s} = {2:s}".format(tablename, key, str(value))
+            query = f"SELECT * FROM `{tablename}` WHERE `{key}` = %s"
             LOG.debug("EXECUTING: %s", query)
-            cursor.execute(query)
+            cursor.execute(query, (value,))
             all_rows = cursor.fetchall()
         return all_rows
 
-    def get_rows_from_columns_by_foregin_id(self, tablename, foregincolumn, foreginidx, **cols):
+    def get_rows_from_columns_by_foregin_id(self, tablename: str, foregincolumn: str, foreginidx: Any, **cols) -> Union[List[Any], int]:
         """
         Retrieves specific columns from the rows of the specified table in the connected MySQL database, filtered by a foreign key index.
 
         :param tablename: The name of the table from which to retrieve the rows.
-        :param foregincolumn: The name of the foreign key column used for filtering.
-        :param foreginidx: The foreign key index value used for filtering.
+        :param foreigncolumn: The name of the foreign key column used for filtering.
+        :param foreignidx: The foreign key index value used for filtering.
         :param cols: Keyword argument containing the "columns" key with a list or string representing the column names to retrieve.
-        :return: A list of rows matching the foreign key filter, or 0 if an error occurs, or 1 if no TypeError occurs.
+        :return: A list of rows matching the foreign key filter, or 0 if an error occurs.
         :raises Error: If there is an error in executing the query.
         :raises TypeError: If no results are found.
         """
@@ -323,7 +318,7 @@ class Connect:
             else:
                 return 1
 
-    def get_row_by_id(self, tablename, idx):
+    def get_row_by_id(self, tablename: str, idx: Any) -> Union[Tuple, None]:
         """
         Retrieves a single row from the specified table in the connected MySQL database, filtered by a specific index.
 
@@ -342,7 +337,7 @@ class Connect:
             single_row = cursor.fetchone()
         return single_row
 
-    def get_value_id(self, tablename, column, value):
+    def get_value_id(self, tablename: str, column: str, value: Any) -> Union[int, None]:
         """
         Checks whether a specific value exists in the specified table and column in the connected MySQL database and retrieves the corresponding ID.
 
@@ -365,7 +360,7 @@ class Connect:
             else:
                 return value_id
 
-    def get_value_id_multiple(self, tablename, **colvals):
+    def get_value_id_multiple(self, tablename: str, **colvals) -> Union[int, None]:
         """
         Retrieves the value ID by comparing multiple entries in the specified table in the connected MySQL database.
 
@@ -397,7 +392,7 @@ class Connect:
             else:
                 return value_id
 
-    def get_value_by_id(self, tablename, column, idx):
+    def get_value_by_id(self, tablename: str, column: str, idx: Any) -> Union[Any, int]:
         """
         Retrieves a specific value from the specified table and column in the connected MySQL database, filtered by the primary key index.
 
@@ -436,7 +431,7 @@ class Connect:
                 return 1
 
 
-    def value_exists(self, tablename, column, value):
+    def value_exists(self, tablename: str, column: str, value: Any) -> int:
         """
         Checks whether a specific value exists in the specified table and column in the connected MySQL database.
 
@@ -445,12 +440,14 @@ class Connect:
         :param value: The value to search for in the specified table and column.
         :return: The number of rows found with the specified value in the specified table and column.
         """
+        query = f"SELECT `{column}`, COUNT(*) FROM `{tablename}` WHERE `{column}` = %s GROUP BY `{column}`"
+        LOG.debug("EXECUTING: %s", query)
         with self.cursor() as cursor:
-            query = "SELECT {1:s}, COUNT(*) FROM {0:s} WHERE {1:s} = {2!r} GROUP BY {1:s}".format(tablename, column, value)
-            LOG.debug("EXECUTING: %s", query)
-            cursor.execute(query)
-            number_of_rows_found = cursor.rowcount
+            cursor.execute(query, (value,))
+            result = cursor.fetchone()
+            number_of_rows_found = result[1] if result else 0
         return number_of_rows_found
+
 
     def value_exists_multiple(self, tablename, **colvals):
         """
@@ -734,7 +731,9 @@ if __name__ == '__main__':
     with Connect(cfgfile, debug=True) as dbconnect:
         # out = dbconnect.show_tables()
         # out = dbconnect.get_column("hdrs", "hdrID")
-        out = dbconnect.get_value_by_id("shows", "showName", 22)
+        # out = dbconnect.get_value_by_id("shows", "showName", 22)
+        out = dbconnect.get_row_by_id("hdrs", 48)
+        print(out)
 
     # dbconnect = Connect(APP_DIR +'/../dbconfig.ini', debug="True")
     # # data = dbconnect.get_rows_from_columns("hdrs", columns=["hdrid"])
@@ -748,6 +747,5 @@ if __name__ == '__main__':
     # testA = dbconnect.get_rowss_from_columns_by_key("software", "softwareName", "'Houdini'", columns=structuredb_columns)
     # print(testA)
 
-    print(out)
     # dbconnect.save()
     # dbconnect.close_connection()
