@@ -8,7 +8,8 @@ import os.path
 import logging
 from contextlib import contextmanager
 from typing import List, Tuple, Any, Union
-from mysql.connector import MySQLConnection, Error, errorcode
+from mysql.connector import Error, errorcode, pooling
+from functools import lru_cache
 from configparser import ConfigParser
 ##=====================================
 
@@ -18,7 +19,11 @@ LOGGING_CFG_FILE = os.path.join(APP_DIR, "config", "logging_config.ini")
 
 class Connect:
     """ main connect class """
-    def __init__(self, cfg='config.ini', debug=False, key=None, value=None):
+
+    # Define the connection pool outside of the __init__ method
+    cnxpool = None
+
+    def __init__(self, cfg='config.ini', debug=False, pool_size=5):
         """
         Initializes the database connection manager.
 
@@ -28,21 +33,31 @@ class Connect:
         :param value: Optional value parameter.
         """
         self.debug = debug
+        self.init_logging()
+        LOG.debug("log initialized")
         self.cfgfile = cfg
         db_config = self.read_db_config(self.cfgfile)
+        db_config["ssl_disabled"] = True
         self.db_name = db_config.get("database")
         self.key = None
         self.value = None
         self.conn = None
+        self.pool =  pooling.MySQLConnectionPool(pool_name="mypool",
+                                                            pool_size=pool_size,
+                                                            **db_config)
 
     def __enter__(self):
-        """
-        Enters the context of the database connection manager.
-
-        :return: The connection object itself.
-        """
-        self.connect_to_db()
-        return self  # Return the Connect object itself
+        try:
+            self.conn = self.pool.get_connection()
+            if self.conn.is_connected():
+                LOG.debug('Connected to MySQL database successfully')
+                return self
+            else:
+                LOG.error('Failed to obtain connection from pool')
+                # Handle the error as needed
+        except Exception as e:
+            LOG.error('Error while obtaining connection: %s', e)
+            # Handle the error as needed
 
     def __exit__(self, exc_type, exc_value, traceback):
         """
@@ -52,34 +67,10 @@ class Connect:
         :param exc_value: Exception value.
         :param traceback: Exception traceback.
         """
-        if self.conn:
-            self.close_connection()
+        if self.conn and hasattr(self.conn, 'is_connected') and self.conn.is_connected():
+            LOG.debug('Returning connection to pool')
+            self.conn.close()
         logging.shutdown()
-
-    def connect_to_db(self):
-        """
-        Connects to the MySQL database using the configuration file specified in the initialization.
-        Initializes logging and handles common connection errors.
-
-        :raises Exception: If there is an error connecting to the database.
-        """
-        self.init_logging()
-        LOG.debug("log initialized")
-        db_config = self.read_db_config(self.cfgfile)
-        self.db_name = db_config.get("database")
-        try:
-            LOG.debug('Connecting to MySQL database...')
-            self.conn = MySQLConnection(**db_config)
-            if self.conn.is_connected():
-                LOG.debug('Connected to MySQL database successfully')
-        except Error as err:
-            if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-                LOG.debug("Something is wrong with your user name or password")
-            elif err.errno == errorcode.ER_BAD_DB_ERROR:
-                LOG.debug("Database does not exist")
-            else:
-                LOG.debug("Error: %s", err)
-            raise Exception(err)
 
     @contextmanager
     def cursor(self):
@@ -125,7 +116,7 @@ class Connect:
         global LOG
         LOG = logger
 
-
+    @lru_cache(maxsize=100)
     def raw_call(self, call: str) -> Union[List, int]:
         """
         Allows execution of a raw SQL call to the connected MySQL database.
@@ -143,7 +134,7 @@ class Connect:
                 return get_query
             except Error as err:
                 LOG.debug("\n\nSomething went wrong: %s", err)
-                return 0
+                return None
 
     def save(self):
         """
@@ -154,6 +145,14 @@ class Connect:
         self.conn.commit()
         LOG.debug('Changes Saved to DB')
 
+    def test_connection(self):
+        try:
+            # You can use any light query to test the connection
+            with self.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            return True
+        except:
+            return False
 
     def show_tables(self) -> List[str]:
         """
