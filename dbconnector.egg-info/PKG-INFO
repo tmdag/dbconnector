@@ -6,3 +6,4 @@ Home-page: http://github.com/tmdag/dbconnector
 Author: Albert Szostkiewicz
 Author-email: tmdag@tmdag.com
 License: MIT
+Requires-Dist: mysql-connector-python

@@ -23,7 +23,7 @@ class Connect:
     # Define the connection pool outside of the __init__ method
     cnxpool = None
 
-    def __init__(self, cfg='config.ini', debug=False, pool_size=5):
+    def __init__(self, cfg='config.ini', debug=True, pool_size=5):
         """
         Initializes the database connection manager.
 
@@ -86,7 +86,7 @@ class Connect:
             cur.close()
 
     @staticmethod
-    def init_logging(log_file=None, append=False, console_loglevel=logging.CRITICAL, enable_console_logging=True):
+    def init_logging(log_file=None, append=False, console_loglevel=logging.DEBUG, enable_console_logging=True):
         """
         Initializes the logging system for the database connection manager.
         Configures the log level and format based on the debug setting.
@@ -98,23 +98,25 @@ class Connect:
         :return: None
         """
         logger = logging.getLogger(__name__)
-        logger.setLevel(logging.DEBUG)
 
-        if log_file is not None:
-            filemode_val = 'a' if append else 'w'
-            file_handler = logging.FileHandler(log_file, mode=filemode_val)
-            file_handler.setLevel(logging.DEBUG)
-            file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(threadName)s %(name)s %(message)s"))
-            logger.addHandler(file_handler)
+        if not logger.handlers:
+            logger.setLevel(logging.DEBUG)
 
-        if enable_console_logging:
-            console = logging.StreamHandler()
-            console.setLevel(console_loglevel)
-            console.setFormatter(logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s'))
-            logger.addHandler(console)
+            if log_file is not None:
+                filemode_val = 'a' if append else 'w'
+                file_handler = logging.FileHandler(log_file, mode=filemode_val)
+                file_handler.setLevel(logging.DEBUG)
+                file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(threadName)s %(name)s %(message)s"))
+                logger.addHandler(file_handler)
 
-        global LOG
-        LOG = logger
+            if enable_console_logging:
+                console = logging.StreamHandler()
+                console.setLevel(console_loglevel)
+                console.setFormatter(logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s'))
+                logger.addHandler(console)
+
+            global LOG
+            LOG = logger
 
     @lru_cache(maxsize=100)
     def raw_call(self, call: str) -> Union[List, int]:
