@@ -13,6 +13,24 @@ from functools import lru_cache
 from configparser import ConfigParser
 ##=====================================
 
+try:
+    from sfpipecore.logging_utils import LoggingUtils
+    LOG = LoggingUtils.init_logging(caller_name=__name__) # Use your utility
+except ImportError:
+    # Fallback to basic logging if sfpipecore is not available
+    # This might happen if dbconnector is used completely independently
+    import logging
+    LOG = logging.getLogger(__name__)
+    if not LOG.handlers: # Basic config if no handlers
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+        handler.setFormatter(formatter)
+        LOG.addHandler(handler)
+        LOG.setLevel(logging.DEBUG)
+    LOG.warning("sfpipecore.logging_utils not found. Using basic fallback logger for dbmanager.")
+
+
+
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGGING_CFG_FILE = os.path.join(APP_DIR, "config", "logging_config.ini")
@@ -32,9 +50,7 @@ class Connect:
         :param key: Optional key parameter.
         :param value: Optional value parameter.
         """
-        self.debug = debug
-        self.init_logging()
-        LOG.debug("log initialized")
+
         self.cfgfile = cfg
         db_config = self.read_db_config(self.cfgfile)
         db_config["ssl_disabled"] = True
@@ -514,7 +530,43 @@ class Connect:
                 # return 1
 
 
-    def insert_single_row2(self, tablename, dbdata):
+    def insert_single_row2(self, tablename, dbdata: dict): # Ensure dbdata is a dict
+        """
+        Inserts a single row into the specified table in the connected MySQL database
+        by passing a dictionary of column names and values, using named placeholders.
+
+        :param tablename: The name of the table into which to insert the row.
+        :param dbdata: A dictionary containing the column names as keys and the corresponding values to insert.
+        :return: The ID of the inserted row, or -1 if an error occurs.
+        """
+        with self.cursor() as cursor:
+            columns = list(dbdata.keys()) # Get column names from the dict
+
+            # Construct query with %(key_name)s placeholders
+            column_names_str = ", ".join([f"`{col}`" for col in columns])
+            value_placeholders_str = ", ".join([f"%({col})s" for col in columns]) # e.g., %(uuid)s, %(shows_showID)s
+
+            query = f"INSERT INTO `{tablename}` ({column_names_str}) VALUES ({value_placeholders_str})"
+
+            LOG.debug(f"EXECUTING (named placeholders): {query} with data_dict: {dbdata}")
+
+            try:
+                cursor.execute(query, dbdata) # Pass the dictionary directly
+            except Error as err:
+                LOG.error(f"DBManager insert_single_row2 SQL Error for table {tablename}: {err}")
+                LOG.error(f"Query: {query}")
+                LOG.error(f"Data: {dbdata}")
+                return -1
+            else:
+                cursor.execute("SELECT LAST_INSERT_ID();")
+                insert_id_row = cursor.fetchone()
+                if insert_id_row:
+                    return insert_id_row[0]
+                else:
+                    LOG.warning(f"LAST_INSERT_ID() returned no result after insert into {tablename}.")
+                    return -1
+
+    def insert_single_row2_old(self, tablename, dbdata):
         """
         Inserts a single row into the specified table in the connected MySQL database by passing a dictionary of column names and values.
 
