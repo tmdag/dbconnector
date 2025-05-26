@@ -89,17 +89,24 @@ class Connect:
         logging.shutdown()
 
     @contextmanager
-    def cursor(self):
+    def cursor(self, **kwargs): # Modified to accept kwargs
         """
-        Provides a cursor to interact with the MySQL database. The cursor is buffered.
+        Provides a cursor to interact with the MySQL database.
+        Allows passing arguments like buffered=True or dictionary=True.
 
-        :yield: Buffered cursor.
+        :yield: Cursor.
         """
-        cur = self.conn.cursor(buffered=True)
+        # Default to buffered=True if not specified by caller
+        if 'buffered' not in kwargs and 'dictionary' not in kwargs : # Only default buffered if not dictionary cursor
+             kwargs['buffered'] = True
+
+        cur = None # Initialize to None
         try:
+            cur = self.conn.cursor(**kwargs) # Pass all kwargs to the actual cursor
             yield cur
         finally:
-            cur.close()
+            if cur:
+                cur.close()
 
     @staticmethod
     def init_logging(log_file=None, append=False, console_loglevel=logging.DEBUG, enable_console_logging=True):
