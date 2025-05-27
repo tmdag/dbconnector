@@ -7,27 +7,19 @@ import sys
 import os.path
 import logging
 from contextlib import contextmanager
-from typing import List, Tuple, Any, Union
+from typing import List, Tuple, Any, Union, Optional
 from mysql.connector import Error, errorcode, pooling
 from functools import lru_cache
 from configparser import ConfigParser
-##=====================================
 
-try:
-    from sfpipecore.logging_utils import LoggingUtils
-    LOG = LoggingUtils.init_logging(caller_name=__name__) # Use your utility
-except ImportError:
-    # Fallback to basic logging if sfpipecore is not available
-    # This might happen if dbconnector is used completely independently
-    import logging
-    LOG = logging.getLogger(__name__)
-    if not LOG.handlers: # Basic config if no handlers
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
-        handler.setFormatter(formatter)
-        LOG.addHandler(handler)
-        LOG.setLevel(logging.DEBUG)
-    LOG.warning("sfpipecore.logging_utils not found. Using basic fallback logger for dbmanager.")
+import logging
+LOG = logging.getLogger(__name__)
+if not LOG.handlers: # Basic config if no handlers
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+    handler.setFormatter(formatter)
+    LOG.addHandler(handler)
+    LOG.setLevel(logging.DEBUG)
 
 
 
@@ -43,14 +35,16 @@ class Connect:
 
     def __init__(self, cfg='config.ini', debug=True, pool_size=5):
         """
-        Initializes the database connection manager.
+        Initializes the database connection manager and its connection pool.
 
-        :param cfg: Path to the configuration file, default is 'config.ini'.
-        :param debug: Enables or disables debug mode, default is False.
-        :param key: Optional key parameter.
-        :param value: Optional value parameter.
+        Args:
+            cfg (str, optional): Path to the configuration file.
+                                Defaults to 'config.ini'.
+            debug (bool, optional): Enables or disables debug logging for the connection
+                                    process. Defaults to True.
+            pool_size (int, optional): The size of the MySQL connection pool.
+                                    Defaults to 5.
         """
-
         self.cfgfile = cfg
         db_config = self.read_db_config(self.cfgfile)
         db_config["ssl_disabled"] = True
@@ -305,17 +299,62 @@ class Connect:
             all_rows = cursor.fetchall()
         return all_rows
 
-    def get_rows_from_columns_by_foregin_id(self, tablename: str, foregincolumn: str, foreginidx: Any, **cols) -> Union[List[Any], int]:
-        """
-        Retrieves specific columns from the rows of the specified table in the connected MySQL database, filtered by a foreign key index.
 
-        :param tablename: The name of the table from which to retrieve the rows.
-        :param foreigncolumn: The name of the foreign key column used for filtering.
-        :param foreignidx: The foreign key index value used for filtering.
-        :param cols: Keyword argument containing the "columns" key with a list or string representing the column names to retrieve.
-        :return: A list of rows matching the foreign key filter, or 0 if an error occurs.
-        :raises Error: If there is an error in executing the query.
-        :raises TypeError: If no results are found.
+    def get_rows_by_key(self, tablename: str, key_column: str, key_value: Any, select_columns: Optional[List[str]] = None) -> List[Tuple]:
+        """
+        Retrieves rows from a table, filtered by a key-value pair, allowing selection of specific columns.
+
+        If `select_columns` is None or empty, all columns ('*') are retrieved. Otherwise, only the
+        specified columns are retrieved.
+
+        Args:
+            tablename (str): The name of the table from which to retrieve the rows.
+            key_column (str): The column name used as a key to filter the rows.
+            key_value (Any): The value corresponding to the key_column used to filter the rows.
+            select_columns (Optional[List[str]], optional): A list of column names to retrieve.
+                If None or empty, all columns are selected. Defaults to None.
+
+        Returns:
+            List[Tuple]: A list of rows, where each row is represented as a tuple.
+                        Each tuple contains the selected column values in the order specified
+                        (or all columns if `select_columns` is None). Returns an empty list
+                        if no rows are found or an error occurs.
+        """
+        with self.cursor() as cursor:
+            if select_columns and len(select_columns) > 0:
+                columns_str = ', '.join([f"`{col}`" for col in select_columns])
+            else:
+                columns_str = '*'
+
+            query = f"SELECT {columns_str} FROM `{tablename}` WHERE `{key_column}` = %s"
+            LOG.debug(f"EXECUTING: {query} with value: {key_value}")
+            try:
+                cursor.execute(query, (key_value,))
+                all_rows = cursor.fetchall()
+                return all_rows
+            except Error as err:
+                LOG.error(f"Error executing get_rows_by_key for table {tablename}: {err}")
+                return [] # Return empty list on error
+
+    def get_rows_from_columns_by_foreign_id(self, tablename: str, foregincolumn: str, foreginidx: Any, **cols) -> Union[List[Any], int]:
+        """
+        Retrieves specific columns from rows filtered by a foreign key index.
+
+        Args:
+            tablename (str): The name of the table.
+            foreign_column (str): The name of the foreign key column for filtering.
+            foreign_idx (Any): The foreign key index value for filtering.
+            **cols: Keyword argument "columns" (List[str] or str): Column(s) to retrieve.
+
+        Returns:
+            Union[List[Any], int]: A list of rows matching the filter, or 0 on error/no results.
+                                If a single column string is provided in **cols, a flat list
+                                of values from that column is returned. If multiple columns
+                                are specified, a list of tuples is returned.
+
+        Raises:
+            Error: If there is an error in executing the query (logged, returns 0).
+            TypeError: If no results are found (logged, returns 0).
         """
         with self.cursor() as cursor:
             if not isinstance(cols.get("columns"), str):
