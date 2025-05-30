@@ -400,60 +400,90 @@ class Connect:
             single_row = cursor.fetchone()
         return single_row
 
+
+
     def get_value_id(self, tablename: str, column: str, value: Any) -> Union[int, None]:
         """
-        Checks whether a specific value exists in the specified table and column in the connected MySQL database and retrieves the corresponding ID.
+        Retrieves the primary key ID of a row where a specific column matches a given value.
+        Uses parameterized queries for security.
 
-        :param tablename: The name of the table in which to check for the value.
-        :param column: The name of the column in which to check for the value.
-        :param value: The value to search for in the specified table and column.
-        :return: The ID corresponding to the value if found, None if not found, or 0 if an error occurs.
-        :raises Error: If there is an error in executing the query.
+        Args:
+            tablename (str): The name of the table.
+            column (str): The name of the column to check.
+            value (Any): The value to search for in the specified column.
+
+        Returns:
+            Union[int, None]: The ID if found, None if not found.
+                            Returns 0 on SQL error (consider raising exception instead for clearer error handling).
         """
+        primary_key_col = self.get_primary_key(tablename)
+        if not primary_key_col:
+            LOG.error(f"Could not determine primary key for table {tablename}. Cannot get value ID.")
+            return 0 # Or raise an exception
+
+        # Use backticks for table and column names to handle reserved words or special chars
+        # Use %s for values in parameterized queries
+        query = f"SELECT `{primary_key_col}` FROM `{tablename}` WHERE `{column}` = %s"
+        params = (value,)
+        LOG.debug(f"EXECUTING: {query} with params {params}")
+
         with self.cursor() as cursor:
-            query = "SELECT @id:={3:s} AS id FROM {0:s} WHERE {1:s} = {2!r}".format(tablename, column, value, self.get_primary_key(tablename))
-            LOG.debug("EXECUTING: %s", query)
             try:
-                cursor.execute(query)
-                get_query = cursor.fetchone()
-                value_id = get_query[0] if get_query != None else None
+                cursor.execute(query, params)
+                result = cursor.fetchone()
+                if result:
+                    return result[0]
+                else:
+                    return None # Value not found
             except Error as err:
-                LOG.debug("\n\nSomething went wrong: %s", err)
+                LOG.error(f"SQL error in get_value_id for table {tablename}, column {column}, value {value}: {err}")
                 return 0
-            else:
-                return value_id
 
     def get_value_id_multiple(self, tablename: str, **colvals) -> Union[int, None]:
         """
-        Retrieves the value ID by comparing multiple entries in the specified table in the connected MySQL database.
+        Retrieves the primary key ID by matching multiple column-value pairs.
 
-        :param tablename: The name of the table in which to check for the values.
-        :param colvals: Keyword argument containing the "columns" key with a list of column names and the "values" key with a corresponding list of values.
-        :return: The ID corresponding to the matched columns and values if found, None if not found, or -1 if an error occurs.
-        :raises Error: If there is an error in executing the query.
+        Uses parameterized queries for security.
+
+        Args:
+            tablename (str): The name of the table.
+            **colvals: Expects "columns" (list of column names) and "values" (list of corresponding values).
+
+        Returns:
+            Union[int, None]: The ID if a unique match is found, None otherwise.
+                              Returns -1 on SQL error or if columns/values mismatch.
+                              (Consider raising exceptions for clearer error handling).
         """
+        primary_key_col = self.get_primary_key(tablename)
+        if not primary_key_col:
+            LOG.error(f"Could not determine primary key for table {tablename}. Cannot get value ID.")
+            return -1
+
+        columns = colvals.get("columns")
+        values = colvals.get("values")
+
+        if not columns or not values or len(columns) != len(values):
+            LOG.error("Columns and values must be provided and have the same length.")
+            return -1
+
+        # Build the WHERE clause with %s placeholders
+        where_clauses = [f"`{col}` = %s" for col in columns]
+        query = f"SELECT `{primary_key_col}` FROM `{tablename}` WHERE {' AND '.join(where_clauses)}"
+        params = tuple(values) # Ensure values are passed as a tuple
+
+        LOG.debug(f"EXECUTING: {query} with params {params}")
+
         with self.cursor() as cursor:
-            columns = colvals.get("columns")
-            values = colvals.get("values")
-            keys = zip(columns, values)
-
-            query = "SELECT @id:={0:s} AS id FROM {1:s} WHERE".format(self.get_primary_key(tablename), tablename)
-
-            elements = (len(columns))
-            for i, (key, value) in enumerate(keys):
-                query += " {0:s} = {1!r} ".format(key, value)
-                query += "AND" if i<elements-1 else ""
-            LOG.debug("EXECUTING: %s", query)
-
             try:
-                cursor.execute(query)
-                get_query = cursor.fetchone()
-                value_id = get_query[0] if get_query != None else None
+                cursor.execute(query, params)
+                result = cursor.fetchone()
+                if result:
+                    return result[0]
+                else:
+                    return None # No matching record found
             except Error as err:
-                LOG.debug("\n\nSomething went wrong: %s", err)
+                LOG.error(f"SQL error in get_value_id_multiple for table {tablename}, criteria {dict(zip(columns, values))}: {err}")
                 return -1
-            else:
-                return value_id
 
     def get_value_by_id(self, tablename: str, column: str, idx: Any) -> Union[Any, int]:
         """
@@ -612,77 +642,66 @@ class Connect:
                     LOG.warning(f"LAST_INSERT_ID() returned no result after insert into {tablename}.")
                     return -1
 
-    def insert_single_row2_old(self, tablename, dbdata):
-        """
-        Inserts a single row into the specified table in the connected MySQL database by passing a dictionary of column names and values.
 
-        :param tablename: The name of the table into which to insert the row.
-        :param dbdata: A dictionary containing the column names as keys and the corresponding values to insert.
-        :return: The ID of the inserted row, or -1 if an error occurs.
-        :raises Error: If there is an error in inserting the row.
+    def update_single_row(self, tablename: str, key: Any, **colvals) -> int:
         """
+        Updates a single row in the specified table identified by its primary key.
+
+        Constructs a single SQL UPDATE statement for efficiency and uses parameterized
+        queries for security.
+
+        Args:
+            tablename (str): The name of the table to update.
+            key (Any): The primary key value of the row to update.
+            **colvals: Expects "columns" (list of column names to update) and
+                       "values" (list or tuple of corresponding new values).
+
+        Returns:
+            int: 1 if the update is successful (row found and updated, or row not found but no SQL error),
+                 0 if an error occurs (e.g., SQL error, columns/values mismatch).
+                 Note: `cursor.rowcount` could be checked to see if a row was actually affected.
+        """
+        primary_key_column = self.get_primary_key(tablename)
+        if not primary_key_column:
+            LOG.error(f"Could not determine primary key for table {tablename}. Cannot update row.")
+            return 0
+
+        columns_to_update = colvals.get("columns")
+        new_values = colvals.get("values")
+
+        if not columns_to_update or not new_values or not isinstance(columns_to_update, list) or not isinstance(new_values, (list, tuple)):
+            LOG.error("Invalid 'columns' or 'values' provided. Both must be lists/tuples.")
+            return 0
+
+        if len(columns_to_update) != len(new_values):
+            LOG.error("Number of columns to update does not match number of new values.")
+            return 0
+
+        if not columns_to_update: # No columns to update
+            LOG.info(f"No columns specified for update in table {tablename}. No action taken.")
+            return 1 # Or 0, depending on desired semantics for "no-op"
+
+        # Construct the SET part of the query, e.g., "`col1` = %s, `col2` = %s"
+        set_clause_parts = [f"`{col}` = %s" for col in columns_to_update]
+        set_clause = ", ".join(set_clause_parts)
+
+        query = f"UPDATE `{tablename}` SET {set_clause} WHERE `{primary_key_column}` = %s"
+
+        # Parameters for the query: all new values first, then the key for the WHERE clause
+        params = tuple(new_values) + (key,)
+
+        LOG.debug(f"EXECUTING: {query} with params {params}")
+
         with self.cursor() as cursor:
-            columns = dbdata.keys()
-            query = "INSERT INTO {} ({}) VALUES ({})".format(tablename, ', '.join(columns), ','.join(['%({})'.format(colname) for colname in columns]))
-            LOG.debug("EXECUTING: %s", query)
             try:
-                cursor.execute(query, dbdata)
+                cursor.execute(query, params)
+                # self.conn.commit() # Assuming save/commit is handled by the caller (DBBridge)
+                # LOG.debug(f"Update executed for table {tablename}, PK {key}. Affected rows: {cursor.rowcount}")
+                return 1 # Indicates successful execution of the query
             except Error as err:
-                LOG.debug("\n\nSomething went wrong: %s\n\n", err)
-                return -1
-            else:
-                cursor.execute("SELECT LAST_INSERT_ID();")
-                insert_id = cursor.fetchone()
-                return insert_id[0]
-                # return 1
-
-
-    def update_single_row(self, tablename, key, **colvals):
-        """
-        Updates a single row in the specified table in the connected MySQL database.
-
-        :param tablename: The name of the table in which to update the row.
-        :param key: The primary key value used to identify the specific row to update.
-        :param colvals: Keyword argument containing the "columns" key with a list or string of column names and the "values" key with a corresponding tuple of values.
-        :return: 1 if the update is successful, or 0 if an error occurs or if the number of columns and values mismatch.
-        :raises Error: If there is an error in updating the row.
-        """
-        with self.cursor() as cursor:
-            primary_key_column = self.get_primary_key(tablename)
-            columns = colvals.get("columns")
-            values = tuple(colvals.get("values"))
-
-            # check if colvals is not just a single string
-            if isinstance(columns, str):
-                single_column = columns
-                single_value = values
-                query = "UPDATE {0:s} SET {1:s} = {2!r} WHERE {3:s} = {4:s}".format(tablename, single_column, single_value, primary_key_column, str(key))
-                LOG.debug("EXECUTING: %s", query)
-                try:
-                    cursor.execute(query)
-                except Error as err:
-                    LOG.debug("\n\nSomething went wrong: %s", err)
-                    return 0
-                else:
-                    return 1
-            else:
-                LOG.debug("We have %s columns to update", len(columns))
-                if len(columns)!=len(values):
-                    LOG.debug("\n\nNumber of columns and values missmatch")
-                    # raise ValueError('Number of columns and values missmatch')
-                    return 0
-                for idx, value in enumerate(columns):
-                    LOG.debug("Updating column %s with value: %s", value, values[idx])
-                    single_column = value
-                    single_value = values[idx]
-                    query = "UPDATE {0:s} SET {1:s} = {2!r} WHERE {3:s} = {4:s}".format(tablename, single_column, single_value, primary_key_column, str(key))
-                    LOG.debug("EXECUTING: %s", query)
-                    try:
-                        cursor.execute(query)
-                    except Error as err:
-                        LOG.debug("\n\nSomething went wrong: %s", err)
-                        return 0
-                return 1
+                LOG.error(f"SQL error updating row in table {tablename} for PK {key}: {err}")
+                LOG.error(f"Query: {query}, Params: {params}")
+                return 0
 
 
     def insert_single_value(self, tablename, column, values):
@@ -822,6 +841,7 @@ class Connect:
         self.conn.close()
         LOG.debug('Connection closed.------------------------------------------------------------------')
         logging.shutdown()
+
 
 
 if __name__ == '__main__':
