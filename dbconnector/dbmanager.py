@@ -14,12 +14,14 @@ from configparser import ConfigParser
 
 import logging
 LOG = logging.getLogger(__name__)
-if not LOG.handlers: # Basic config if no handlers
+if not LOG.handlers and not logging.getLogger().handlers:
+    # Add a basic handler only if NO logger in the entire system is configured.
+    # This helps for direct script execution but won't interfere with library use.
     handler = logging.StreamHandler()
     formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
     handler.setFormatter(formatter)
     LOG.addHandler(handler)
-    LOG.setLevel(logging.DEBUG)
+    LOG.setLevel(logging.INFO) # Default to INFO, not DEBUG
 
 
 
@@ -32,29 +34,34 @@ class Connect:
 
     # Define the connection pool outside of the __init__ method
     cnxpool = None
+    _pools = {}
 
     def __init__(self, cfg='config.ini', debug=True, pool_size=5):
         """
         Initializes the database connection manager and its connection pool.
-
-        Args:
-            cfg (str, optional): Path to the configuration file.
-                                Defaults to 'config.ini'.
-            debug (bool, optional): Enables or disables debug logging for the connection
-                                    process. Defaults to True.
-            pool_size (int, optional): The size of the MySQL connection pool.
-                                    Defaults to 5.
         """
-        self.cfgfile = cfg
-        db_config = self.read_db_config(self.cfgfile)
-        db_config["ssl_disabled"] = True
-        self.db_name = db_config.get("database")
-        self.key = None
-        self.value = None
+        if debug:
+            LOG.setLevel(logging.DEBUG)
+        else:
+            LOG.setLevel(logging.INFO)
+
+        # --- START FIX ---
+        # Use a simple, fixed name for the connection pool.
+        pool_name = "sfpipe_pool"
+
+        if pool_name not in Connect._pools:
+            LOG.info(f"Connection pool '{pool_name}' not found. Creating new pool.")
+            db_config = self.read_db_config(cfg)
+            db_config["ssl_disabled"] = True
+            Connect._pools[pool_name] = pooling.MySQLConnectionPool(
+                pool_name=pool_name,
+                pool_size=pool_size,
+                **db_config
+            )
+
+        self.pool = Connect._pools[pool_name]
         self.conn = None
-        self.pool =  pooling.MySQLConnectionPool(pool_name="mypool",
-                                                            pool_size=pool_size,
-                                                            **db_config)
+        self.db_name = self.read_db_config(cfg).get("database")
 
     def __enter__(self):
         try:
@@ -135,7 +142,6 @@ class Connect:
             global LOG
             LOG = logger
 
-    @lru_cache(maxsize=100)
     def raw_call(self, call: str) -> Union[List, int]:
         """
         Allows execution of a raw SQL call to the connected MySQL database.
@@ -248,6 +254,40 @@ class Connect:
             db_data = cursor.fetchall()
             all_rows = list(tuple(zip(*db_data))[0])
         return all_rows
+
+    def get_rows_by_key(self,
+                        tablename: str,
+                        key_column: str,
+                        key_value: Any,
+                        select_columns: Optional[List[str]] = None
+                    ) -> List[Tuple]:
+        """
+        Retrieves rows from a table, filtered by a key-value pair.
+
+        Args:
+            tablename (str): The name of the table.
+            key_column (str): The column to filter on.
+            key_value (Any): The value to match in the key_column.
+            select_columns (Optional[List[str]]): A list of specific columns
+                                                to retrieve. If None, retrieves all ('*').
+        Returns:
+            A list of rows as tuples.
+        """
+        with self.cursor() as cursor:
+            if select_columns:
+                columns_str = ', '.join([f"`{col}`" for col in select_columns])
+            else:
+                columns_str = '*'
+
+            query = f"SELECT {columns_str} FROM `{tablename}` WHERE `{key_column}` = %s"
+            params = (key_value,)
+            LOG.debug(f"EXECUTING: {query} with params {params}")
+            try:
+                cursor.execute(query, params)
+                return cursor.fetchall()
+            except Error as err:
+                LOG.error(f"Error in get_rows_by_key: {err}")
+                return []
 
     def get_rows_from_columns(self, tablename: str, **cols) -> List[Tuple]:
         """
@@ -601,9 +641,19 @@ class Connect:
                 return -1
             else:
                 cursor.execute("SELECT LAST_INSERT_ID();")
-                insert_id = cursor.fetchone()
-                return insert_id[0]
-                # return 1
+                insert_id_tuple = cursor.fetchone()
+                if insert_id_tuple and insert_id_tuple[0] is not None:
+                    new_id = int(insert_id_tuple[0])
+                    if new_id > 0:
+                        return new_id
+                    else:
+                        # LAST_INSERT_ID() returned 0, meaning no new auto-increment ID was generated.
+                        # This is an issue if we expected a new row.
+                        LOG.warning(f"LAST_INSERT_ID() returned {new_id} for table {tablename}. Assuming insert failed to generate a new row ID.")
+                        return -1
+                else:
+                    LOG.warning(f"LAST_INSERT_ID() returned no result (None) after insert into {tablename}. Assuming insert failed.")
+                    return -1
 
 
     def insert_single_row2(self, tablename, dbdata: dict): # Ensure dbdata is a dict
