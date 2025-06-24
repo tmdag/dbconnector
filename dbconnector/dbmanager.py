@@ -14,14 +14,14 @@ from configparser import ConfigParser
 
 import logging
 LOG = logging.getLogger(__name__)
-if not LOG.handlers and not logging.getLogger().handlers:
-    # Add a basic handler only if NO logger in the entire system is configured.
-    # This helps for direct script execution but won't interfere with library use.
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
-    handler.setFormatter(formatter)
-    LOG.addHandler(handler)
-    LOG.setLevel(logging.INFO) # Default to INFO, not DEBUG
+# if not LOG.handlers and not logging.getLogger().handlers:
+#     # Add a basic handler only if NO logger in the entire system is configured.
+#     # This helps for direct script execution but won't interfere with library use.
+#     handler = logging.StreamHandler()
+#     formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+#     handler.setFormatter(formatter)
+#     LOG.addHandler(handler)
+#     LOG.setLevel(logging.INFO) # Default to INFO, not DEBUG
 
 
 
