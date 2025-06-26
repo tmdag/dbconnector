@@ -9,7 +9,7 @@ import logging
 from contextlib import contextmanager
 from typing import List, Tuple, Any, Union, Optional
 from mysql.connector import Error, errorcode, pooling
-from functools import lru_cache
+from functools import lru_cache, wraps
 from configparser import ConfigParser
 
 import logging
@@ -32,7 +32,6 @@ LOGGING_CFG_FILE = os.path.join(APP_DIR, "config", "logging_config.ini")
 class Connect:
     """ main connect class """
 
-    # Define the connection pool outside of the __init__ method
     cnxpool = None
     _pools = {}
 
@@ -40,13 +39,6 @@ class Connect:
         """
         Initializes the database connection manager and its connection pool.
         """
-        if debug:
-            LOG.setLevel(logging.DEBUG)
-        else:
-            LOG.setLevel(logging.INFO)
-
-        # --- START FIX ---
-        # Use a simple, fixed name for the connection pool.
         pool_name = "sfpipe_pool"
 
         if pool_name not in Connect._pools:
@@ -63,18 +55,46 @@ class Connect:
         self.conn = None
         self.db_name = self.read_db_config(cfg).get("database")
 
-    def __enter__(self):
+    def _reconnect(self):
+        """Close the stale connection and get a new one from the pool."""
+        LOG.warning("Database connection lost. Attempting to reconnect...")
+        if self.conn:
+            try:
+                self.conn.close()
+            except Exception as e:
+                LOG.debug(f"Exception while closing stale connection: {e}")
         try:
             self.conn = self.pool.get_connection()
             if self.conn.is_connected():
-                LOG.debug('Connected to MySQL database successfully')
+                LOG.info("Successfully reconnected to the database.")
+                return True
+        except Error as e:
+            LOG.error(f"Failed to reconnect to the database: {e}")
+        return False
+
+    def __enter__(self):
+        try:
+            # If we already have a connection object, ping it to ensure it's alive.
+            if self.conn and self.conn.is_connected():
+                LOG.debug("Pinging existing connection...")
+                self.conn.ping(reconnect=True, attempts=3, delay=1)
+            else:
+                # If no connection, get a new one.
+                self.conn = self.pool.get_connection()
+
+            if self.conn.is_connected():
+                LOG.debug('Connection to MySQL database is active.')
                 return self
             else:
-                LOG.error('Failed to obtain connection from pool')
-                # Handle the error as needed
-        except Exception as e:
-            LOG.error('Error while obtaining connection: %s', e)
-            # Handle the error as needed
+                LOG.error('Failed to obtain a valid connection from pool.')
+                raise Error("Could not establish a valid database connection.")
+        except Error as e:
+            LOG.error(f'Error during database connection context entry: {e}')
+            # Attempt a full reconnect as a last resort
+            if self._reconnect():
+                return self
+            else:
+                raise # Re-raise if the final reconnect attempt fails
 
     def __exit__(self, exc_type, exc_value, traceback):
         """
@@ -89,8 +109,56 @@ class Connect:
             self.conn.close()
         logging.shutdown()
 
+    def _reconnect(self) -> bool:
+        """
+        Close the stale connection and get a new one from the pool.
+        This is a last-resort recovery method.
+        """
+        LOG.warning("Database connection lost. Attempting a full reconnect...")
+        if self.conn:
+            try:
+                # Close the connection object without returning it to the pool
+                self.conn.close()
+            except Error as e:
+                LOG.debug(f"Exception while closing stale connection: {e}")
+        try:
+            # Get a fresh connection from the pool
+            self.conn = self.pool.get_connection()
+            if self.conn.is_connected():
+                LOG.info("Successfully reconnected to the database.")
+                return True
+        except Error as e:
+            LOG.error(f"Failed to reconnect to the database: {e}")
+        return False
+
+    @staticmethod
+    def reconnect_on_operational_error(func):
+        """
+        A decorator that catches MySQL OperationalError, attempts to reconnect,
+        and retries the function once.
+        """
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            try:
+                return func(self, *args, **kwargs)
+            except Error as err:
+                if err.errno in [errorcode.CR_SERVER_GONE_ERROR,
+                                errorcode.CR_SERVER_LOST,
+                                errorcode.ER_CON_COUNT_ERROR]:
+                    LOG.warning(f"Intercepted MySQL connection error in '{func.__name__}': {err}")
+                    if self._reconnect():
+                        LOG.info(f"Retrying '{func.__name__}' after successful reconnection.")
+                        return func(self, *args, **kwargs)
+                    else:
+                        LOG.critical("Could not retry function as reconnection failed.")
+                        raise # Re-raise the original error if reconnect fails
+                else:
+                    # Re-raise other errors that are not connection-related
+                    raise
+        return wrapper
+
     @contextmanager
-    def cursor(self, **kwargs): # Modified to accept kwargs
+    def cursor(self, **kwargs):
         """
         Provides a cursor to interact with the MySQL database.
         Allows passing arguments like buffered=True or dictionary=True.
@@ -98,12 +166,12 @@ class Connect:
         :yield: Cursor.
         """
         # Default to buffered=True if not specified by caller
-        if 'buffered' not in kwargs and 'dictionary' not in kwargs : # Only default buffered if not dictionary cursor
+        if 'buffered' not in kwargs and 'dictionary' not in kwargs :
              kwargs['buffered'] = True
 
         cur = None # Initialize to None
         try:
-            cur = self.conn.cursor(**kwargs) # Pass all kwargs to the actual cursor
+            cur = self.conn.cursor(**kwargs)
             yield cur
         finally:
             if cur:
@@ -142,6 +210,7 @@ class Connect:
             global LOG
             LOG = logger
 
+    @reconnect_on_operational_error
     def raw_call(self, call: str) -> Union[List, int]:
         """
         Allows execution of a raw SQL call to the connected MySQL database.
@@ -161,6 +230,7 @@ class Connect:
                 LOG.debug("\n\nSomething went wrong: %s", err)
                 return None
 
+    @reconnect_on_operational_error
     def save(self):
         """
         Commits changes to the connected MySQL database.
@@ -170,6 +240,7 @@ class Connect:
         self.conn.commit()
         LOG.debug('Changes Saved to DB')
 
+    @reconnect_on_operational_error
     def test_connection(self):
         try:
             # You can use any light query to test the connection
@@ -179,6 +250,7 @@ class Connect:
         except:
             return False
 
+    @reconnect_on_operational_error
     def show_tables(self) -> List[str]:
         """
         Retrieves the names of all the tables in the connected MySQL database.
@@ -193,21 +265,26 @@ class Connect:
             tables: List[str] = list(list(zip(*cursor.fetchall()))[0])
         return tables
 
+    @reconnect_on_operational_error
+    @lru_cache(maxsize=128)
     def get_primary_key(self, tablename: str) -> str:
         """
-        Retrieves the primary key column name for the specified table in the connected MySQL database.
-
-        :param tablename: The name of the table for which to retrieve the primary key.
-        :return: The name of the primary key column.
-        :raises Exception: If there is an error in retrieving the primary key.
+        Retrieves the primary key column name for the specified table.
+        This method is cached for performance.
         """
         with self.cursor() as cursor:
+            # Use parameterized query for safety
             query = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = %s) AND (`COLUMN_KEY` = 'PRI')"
-            LOG.debug("EXECUTING: %s", query)
+            LOG.debug("EXECUTING: %s with params (%s,)", query, tablename)
             cursor.execute(query, (tablename,))
-            primary_key_name = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            if not result:
+                raise ValueError(f"Could not find a primary key for table '{tablename}'.")
+            primary_key_name = result[0]
         return primary_key_name
 
+    @reconnect_on_operational_error
+    @lru_cache(maxsize=128)
     def get_column_names(self, tablename: str) -> List[str]:
         """
         Retrieves the names of all columns for the specified table in the connected MySQL database.
@@ -223,6 +300,7 @@ class Connect:
             column_names = list(list(zip(*cursor.fetchall()))[0])
         return column_names
 
+    @reconnect_on_operational_error
     def get_all_rows(self, tablename: str) -> List[Tuple]:
         """
         Retrieves all rows from the specified table in the connected MySQL database.
@@ -238,6 +316,7 @@ class Connect:
             all_rows = cursor.fetchall()
         return all_rows
 
+    @reconnect_on_operational_error
     def get_column(self, tablename: str, column: str) -> List[Any]:
         """
         Retrieves the values of a specific column from the specified table in the connected MySQL database.
@@ -255,40 +334,7 @@ class Connect:
             all_rows = list(tuple(zip(*db_data))[0])
         return all_rows
 
-    def get_rows_by_key(self,
-                        tablename: str,
-                        key_column: str,
-                        key_value: Any,
-                        select_columns: Optional[List[str]] = None
-                    ) -> List[Tuple]:
-        """
-        Retrieves rows from a table, filtered by a key-value pair.
-
-        Args:
-            tablename (str): The name of the table.
-            key_column (str): The column to filter on.
-            key_value (Any): The value to match in the key_column.
-            select_columns (Optional[List[str]]): A list of specific columns
-                                                to retrieve. If None, retrieves all ('*').
-        Returns:
-            A list of rows as tuples.
-        """
-        with self.cursor() as cursor:
-            if select_columns:
-                columns_str = ', '.join([f"`{col}`" for col in select_columns])
-            else:
-                columns_str = '*'
-
-            query = f"SELECT {columns_str} FROM `{tablename}` WHERE `{key_column}` = %s"
-            params = (key_value,)
-            LOG.debug(f"EXECUTING: {query} with params {params}")
-            try:
-                cursor.execute(query, params)
-                return cursor.fetchall()
-            except Error as err:
-                LOG.error(f"Error in get_rows_by_key: {err}")
-                return []
-
+    @reconnect_on_operational_error
     def get_rows_from_columns(self, tablename: str, **cols) -> List[Tuple]:
         """
         Retrieves specific columns from all rows of the specified table in the connected MySQL database.
@@ -305,6 +351,7 @@ class Connect:
             all_rows = cursor.fetchall()
         return all_rows
 
+    @reconnect_on_operational_error
     def get_rowss_from_columns_by_key(self, tablename: str, key: str, value: Any, **cols) -> List[Tuple]:
         """
         Retrieves specific columns from the rows of the specified table in the connected MySQL database, filtered by a key-value pair.
@@ -323,6 +370,7 @@ class Connect:
             all_rows = cursor.fetchall()
         return all_rows
 
+    @reconnect_on_operational_error
     def get_rows_from_columns_by_key(self, tablename: str, key: str, value: Any) -> List[Tuple]:
         """
         Retrieves all columns from the rows of the specified table in the connected MySQL database, filtered by a key-value pair.
@@ -339,7 +387,7 @@ class Connect:
             all_rows = cursor.fetchall()
         return all_rows
 
-
+    @reconnect_on_operational_error
     def get_rows_by_key(self, tablename: str, key_column: str, key_value: Any, select_columns: Optional[List[str]] = None) -> List[Tuple]:
         """
         Retrieves rows from a table, filtered by a key-value pair, allowing selection of specific columns.
@@ -374,8 +422,9 @@ class Connect:
                 return all_rows
             except Error as err:
                 LOG.error(f"Error executing get_rows_by_key for table {tablename}: {err}")
-                return [] # Return empty list on error
+                return []
 
+    @reconnect_on_operational_error
     def get_rows_from_columns_by_foreign_id(self, tablename: str, foregincolumn: str, foreginidx: Any, **cols) -> Union[List[Any], int]:
         """
         Retrieves specific columns from rows filtered by a foreign key index.
@@ -421,6 +470,7 @@ class Connect:
             else:
                 return 1
 
+    @reconnect_on_operational_error
     def get_row_by_id(self, tablename: str, idx: Any) -> Union[Tuple, None]:
         """
         Retrieves a single row from the specified table in the connected MySQL database, filtered by a specific index.
@@ -430,18 +480,15 @@ class Connect:
         :return: A tuple representing the single row matching the index, or None if not found.
         """
         with self.cursor() as cursor:
-            query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
-            LOG.debug("EXECUTING: %s", query1)
-            cursor.execute(query1)
-            columnID = cursor.fetchone()[0]
-            query2 = "SELECT * FROM {0:s} WHERE {1:s} = {2!r};".format(tablename, columnID, str(idx))
-            LOG.debug("EXECUTING: %s", query2)
-            cursor.execute(query2)
+            primary_key_col = self.get_primary_key(tablename)
+            query = f"SELECT * FROM `{tablename}` WHERE `{primary_key_col}` = %s"
+            params = (idx,)
+            LOG.debug("EXECUTING: %s with params %s", query, params)
+            cursor.execute(query, params)
             single_row = cursor.fetchone()
         return single_row
 
-
-
+    @reconnect_on_operational_error
     def get_value_id(self, tablename: str, column: str, value: Any) -> Union[int, None]:
         """
         Retrieves the primary key ID of a row where a specific column matches a given value.
@@ -479,6 +526,7 @@ class Connect:
                 LOG.error(f"SQL error in get_value_id for table {tablename}, column {column}, value {value}: {err}")
                 return 0
 
+    @reconnect_on_operational_error
     def get_value_id_multiple(self, tablename: str, **colvals) -> Union[int, None]:
         """
         Retrieves the primary key ID by matching multiple column-value pairs.
@@ -525,6 +573,7 @@ class Connect:
                 LOG.error(f"SQL error in get_value_id_multiple for table {tablename}, criteria {dict(zip(columns, values))}: {err}")
                 return -1
 
+    @reconnect_on_operational_error
     def get_value_by_id(self, tablename: str, column: str, idx: Any) -> Union[Any, int]:
         """
         Retrieves a specific value from the specified table and column in the connected MySQL database, filtered by the primary key index.
@@ -537,33 +586,20 @@ class Connect:
         :raises TypeError: If no results are found.
         """
         with self.cursor() as cursor:
-            query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
-            LOG.debug("EXECUTING: %s", query1)
+            primary_key_col = self.get_primary_key(tablename)
+            query = f"SELECT `{column}` FROM `{tablename}` WHERE `{primary_key_col}` = %s"
+            params = (idx,)
+            LOG.debug("EXECUTING: %s with params %s", query, params)
 
             try:
-                cursor.execute(query1)
-                columnID = cursor.fetchone()[0]
+                cursor.execute(query, params)
+                result = cursor.fetchone()
+                return result[0] if result else None
             except Error as err:
-                LOG.debug("\n\nSomething went wrong: %s", err)
+                LOG.error(f"SQL error in get_value_by_id: {err}")
                 return 0
 
-            query2 = "SELECT {1:s} FROM {0:s} WHERE {2:s} = {3!r};".format(tablename, column, columnID, str(idx))
-            LOG.debug("EXECUTING: %s", query2)
-
-            try:
-                cursor.execute(query2)
-                single_row = cursor.fetchone()[0]
-                return single_row
-            except Error as err:
-                LOG.debug("\n\nSomething went wrong: %s", err)
-                return 0
-            except TypeError as err:
-                LOG.debug("No results found %s", err)
-                return 0
-            else:
-                return 1
-
-
+    @reconnect_on_operational_error
     def value_exists(self, tablename: str, column: str, value: Any) -> int:
         """
         Checks whether a specific value exists in the specified table and column in the connected MySQL database.
@@ -581,7 +617,7 @@ class Connect:
             number_of_rows_found = result[1] if result else 0
         return number_of_rows_found
 
-
+    @reconnect_on_operational_error
     def value_exists_multiple(self, tablename, **colvals):
         """
         Checks whether specific values exist in the specified table and columns in the connected MySQL database.
@@ -618,8 +654,7 @@ class Connect:
                 LOG.debug("No results found %s", err)
                 return 0
 
-
-
+    @reconnect_on_operational_error
     def insert_single_row(self, tablename,**colvals):
         """
         Inserts a single row into the specified table in the connected MySQL database.
@@ -655,8 +690,8 @@ class Connect:
                     LOG.warning(f"LAST_INSERT_ID() returned no result (None) after insert into {tablename}. Assuming insert failed.")
                     return -1
 
-
-    def insert_single_row2(self, tablename, dbdata: dict): # Ensure dbdata is a dict
+    @reconnect_on_operational_error
+    def insert_single_row2(self, tablename, dbdata: dict):
         """
         Inserts a single row into the specified table in the connected MySQL database
         by passing a dictionary of column names and values, using named placeholders.
@@ -666,9 +701,8 @@ class Connect:
         :return: The ID of the inserted row, or -1 if an error occurs.
         """
         with self.cursor() as cursor:
-            columns = list(dbdata.keys()) # Get column names from the dict
+            columns = list(dbdata.keys())
 
-            # Construct query with %(key_name)s placeholders
             column_names_str = ", ".join([f"`{col}`" for col in columns])
             value_placeholders_str = ", ".join([f"%({col})s" for col in columns]) # e.g., %(uuid)s, %(shows_showID)s
 
@@ -677,7 +711,7 @@ class Connect:
             LOG.debug(f"EXECUTING (named placeholders): {query} with data_dict: {dbdata}")
 
             try:
-                cursor.execute(query, dbdata) # Pass the dictionary directly
+                cursor.execute(query, dbdata)
             except Error as err:
                 LOG.error(f"DBManager insert_single_row2 SQL Error for table {tablename}: {err}")
                 LOG.error(f"Query: {query}")
@@ -692,7 +726,7 @@ class Connect:
                     LOG.warning(f"LAST_INSERT_ID() returned no result after insert into {tablename}.")
                     return -1
 
-
+    @reconnect_on_operational_error
     def update_single_row(self, tablename: str, key: Any, **colvals) -> int:
         """
         Updates a single row in the specified table identified by its primary key.
@@ -753,7 +787,7 @@ class Connect:
                 LOG.error(f"Query: {query}, Params: {params}")
                 return 0
 
-
+    @reconnect_on_operational_error
     def insert_single_value(self, tablename, column, values):
         """
         Inserts a single value into the specified table and column in the connected MySQL database.
@@ -777,7 +811,7 @@ class Connect:
                 insert_id = cursor.fetchone()
                 return insert_id[0]
 
-
+    @reconnect_on_operational_error
     def update_single_value(self, tablename, key, column, value):
         """
         Updates a single value in the specified table, column, and key in the connected MySQL database.
@@ -798,6 +832,7 @@ class Connect:
 
         return 1
 
+    @reconnect_on_operational_error
     def remove_by_value(self, tablename, column, values):
         """
         Removes a row from the specified table in the connected MySQL database by matching a value in a specific column. This method is considered dangerous; it's better to use remove_by_id.
@@ -813,6 +848,7 @@ class Connect:
             cursor.execute(query)
         return 1
 
+    @reconnect_on_operational_error
     def remove_by_id(self, tablename, idx):
         """
         Removes a whole row from the specified table in the connected MySQL database by matching the primary key ID.
@@ -824,40 +860,20 @@ class Connect:
         :raises TypeError: If no results are found.
         """
         with self.cursor() as cursor:
-            query1 = "SELECT `COLUMN_NAME` FROM `information_schema`.`COLUMNS` WHERE (`TABLE_NAME` = {0!r}) AND (`COLUMN_KEY` = 'PRI');".format(tablename)
-            LOG.debug("EXECUTING: %s", query1)
-
+            primary_key_col = self.get_primary_key(tablename)
+            query = f"DELETE FROM `{tablename}` WHERE `{primary_key_col}` = %s"
+            params = (idx,)
+            LOG.debug("EXECUTING: %s with params %s", query, params)
             try:
-                cursor.execute(query1)
-                columnID = cursor.fetchone()[0]
-            except Error as err:
-                LOG.debug("\n\nSomething went wrong: %s", err)
-                return 0
-
-            query2 = "DELETE FROM {0:s} WHERE {1:s} = {2!r}".format(tablename, columnID, str(idx))
-            LOG.debug("EXECUTING: %s", query2)
-
-            try:
-                cursor.execute(query2)
+                cursor.execute(query, params)
                 return 1
             except Error as err:
-                LOG.debug("\n\nSomething went wrong: %s", err)
+                LOG.error(f"SQL error in remove_by_id: {err}")
                 return 0
-            except TypeError as err:
-                LOG.debug("No results found %s", err)
-                return 0
-
-
-
-    def as_dict(self):
-        pass
 
     def as_list(self, db_data):
         db_data = list(tuple(zip(*db_data))[0])
         return db_data
-
-    def get_data(self):
-        pass
 
     def __repr__(self):
         return str(self.value)
@@ -887,10 +903,17 @@ class Connect:
         return db_config_dict
 
     def close_connection(self):
-        ''' close connection to database '''
-        self.conn.close()
-        LOG.debug('Connection closed.------------------------------------------------------------------')
-        logging.shutdown()
+        ''' Closes the database connection gracefully. '''
+        if self.conn and self.conn.is_connected():
+            try:
+                self.conn.close()
+                LOG.debug('Connection closed.')
+            except Error as e:
+                LOG.error(f"Error while closing connection: {e}")
+        else:
+            LOG.debug('No active connection to close.')
+        if logging.getLogger().hasHandlers():
+            logging.shutdown()
 
 
 
