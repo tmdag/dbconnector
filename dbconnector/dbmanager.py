@@ -12,19 +12,11 @@ from mysql.connector import Error, errorcode, pooling
 from functools import lru_cache, wraps
 from configparser import ConfigParser
 
-import logging
-LOG = logging.getLogger(__name__)
-# if not LOG.handlers and not logging.getLogger().handlers:
-#     # Add a basic handler only if NO logger in the entire system is configured.
-#     # This helps for direct script execution but won't interfere with library use.
-#     handler = logging.StreamHandler()
-#     formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
-#     handler.setFormatter(formatter)
-#     LOG.addHandler(handler)
-#     LOG.setLevel(logging.INFO) # Default to INFO, not DEBUG
+# import logging
+# LOG = logging.getLogger(__name__)
 
-
-
+from sfpipecore.logging_utils import LoggingUtils
+LOG = LoggingUtils.init_logging(log_level=logging.INFO, caller_name=__name__)
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGGING_CFG_FILE = os.path.join(APP_DIR, "config", "logging_config.ini")
@@ -39,6 +31,9 @@ class Connect:
         """
         Initializes the database connection manager and its connection pool.
         """
+        if debug:
+            LOG.setLevel(logging.DEBUG)
+
         pool_name = "sfpipe_pool"
 
         if pool_name not in Connect._pools:
