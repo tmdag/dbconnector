@@ -12,14 +12,13 @@ from mysql.connector import Error, errorcode, pooling
 from functools import lru_cache, wraps
 from configparser import ConfigParser
 
-# import logging
-# LOG = logging.getLogger(__name__)
+from sfpipecore.logging_utils import get_logger
 
-from sfpipecore.logging_utils import LoggingUtils
-LOG = LoggingUtils.init_logging(log_level=logging.INFO, caller_name=__name__)
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGGING_CFG_FILE = os.path.join(APP_DIR, "config", "logging_config.ini")
+
+LOG = get_logger(__name__)
 
 class Connect:
     """ main connect class """
@@ -172,58 +171,85 @@ class Connect:
             if cur:
                 cur.close()
 
-    @staticmethod
-    def init_logging(log_file=None, append=False, console_loglevel=logging.DEBUG, enable_console_logging=True):
-        """
-        Initializes the logging system for the database connection manager.
-        Configures the log level and format based on the debug setting.
-
-        :param log_file: The path to the log file. If None, logging to a file is disabled.
-        :param append: If True, append to the log file; otherwise, overwrite it.
-        :param console_loglevel: The log level for console logging.
-        :param enable_console_logging: If True, enable logging to the console.
-        :return: None
-        """
-        logger = logging.getLogger(__name__)
-
-        if not logger.handlers:
-            logger.setLevel(logging.DEBUG)
-
-            if log_file is not None:
-                filemode_val = 'a' if append else 'w'
-                file_handler = logging.FileHandler(log_file, mode=filemode_val)
-                file_handler.setLevel(logging.DEBUG)
-                file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(threadName)s %(name)s %(message)s"))
-                logger.addHandler(file_handler)
-
-            if enable_console_logging:
-                console = logging.StreamHandler()
-                console.setLevel(console_loglevel)
-                console.setFormatter(logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s'))
-                logger.addHandler(console)
-
-            global LOG
-            LOG = logger
 
     @reconnect_on_operational_error
-    def raw_call(self, call: str) -> Union[List, int]:
+    def execute(self, query: str, params: Optional[tuple] = None, dictionary: bool = False, fetch: str = "all") -> Union[List, Tuple, int, None]:
         """
-        Allows execution of a raw SQL call to the connected MySQL database.
+        Executes a given SQL query safely with parameters. This is the primary
+        method for all database interactions.
 
-        :param call: The raw SQL query string to execute.
-        :return: The result of the query as a list of rows, or 0 if an error occurs.
-        :raises Error: If there is an error in executing the query.
+        Args:
+            query (str): The SQL query string with %s placeholders.
+            params (Optional[tuple]): A tuple of parameters to bind to the query.
+            dictionary (bool): If True, returns results as dicts instead of tuples.
+            fetch (str): Determines what to fetch. One of 'all', 'one', or 'none'.
+
+        Returns:
+            - For SELECT with fetch='all': A list of rows (tuples or dicts).
+            - For SELECT with fetch='one': A single row or None.
+            - For INSERT/UPDATE/DELETE or fetch='none': The number of affected rows (int).
+            - None on any SQL error.
         """
-        with self.cursor() as cursor:
-            query = call
-            LOG.debug("EXECUTING: %s", query)
-            try:
-                cursor.execute(query)
-                get_query = cursor.fetchall()
-                return get_query
-            except Error as err:
-                LOG.debug("\n\nSomething went wrong: %s", err)
-                return None
+        LOG.debug("EXECUTING: Query=%s, Params=%s", query, params)
+        try:
+            with self.cursor(dictionary=dictionary) as cursor:
+                cursor.execute(query, params or ())
+
+                if fetch == "all":
+                    return cursor.fetchall()
+                elif fetch == "one":
+                    return cursor.fetchone()
+                else: # 'none'
+                    return cursor.rowcount
+        except Error as err:
+            LOG.error("SQL Error: %s", err)
+            LOG.error("Failed Query: %s | Failed Params: %s", query, params)
+            return None
+
+    @reconnect_on_operational_error
+    def save(self):
+        """Commits the current transaction."""
+        self.conn.commit()
+        LOG.debug('Changes Saved to DB')
+
+    @reconnect_on_operational_error
+    def rollback(self):
+        """Rolls back the current transaction."""
+        self.conn.rollback()
+        LOG.debug('DB Changes Rolled Back')
+
+
+    @reconnect_on_operational_error
+    def raw_call(self, query: str, params: Optional[tuple] = None, dictionary: bool = False) -> Union[List, int, None]:
+        """
+        Executes a raw SQL call, safely handling parameters and cursor type.
+
+        Args:
+            query (str): The raw SQL query string with placeholders (%s).
+            params (Optional[tuple]): A tuple of parameters to be safely substituted.
+            dictionary (bool): If True, returns results as a list of dictionaries.
+
+        Returns:
+            The result of the query.
+        """
+        # The LOG call now shows the query template AND the parameters, which is much better for debugging.
+        LOG.debug("EXECUTING: %s PARAMS: %s", query, params)
+        try:
+            # Pass the dictionary argument to the cursor context manager
+            with self.cursor(dictionary=dictionary) as cursor:
+                cursor.execute(query, params or ()) # Ensure params is a tuple, even if empty
+
+                # fetchall() is what we want for SELECT queries.
+                # For INSERT/UPDATE, the command runs but fetchall() will be empty.
+                if cursor.statement.strip().upper().startswith("SELECT"):
+                    return cursor.fetchall()
+                else:
+                    # For non-SELECT queries, we can return the row count to indicate success.
+                    return cursor.rowcount
+        except Error as err:
+            LOG.error("SQL Error in raw_call: %s", err)
+            LOG.error("Failed Query: %s | Failed Params: %s", query, params)
+            return None
 
     @reconnect_on_operational_error
     def save(self):
